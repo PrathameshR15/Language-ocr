@@ -76,5 +76,21 @@ class TestUniversalTranslationService(unittest.TestCase):
             res = translation_engine.translate_paragraph(raw_text, "Marathi")
             self.assertEqual(res, expected_translation)
 
+    def test_marathi_honorific_affirmative_translation(self):
+        phrase = "ज्येष्ठ व गुणवंत कलावंतांचा गौरव व सन्मान केला"
+        res = translation_engine.translate_paragraph(phrase, "Marathi")
+        self.assertNotIn("not", res.lower())
+        self.assertIn("felicita", res.lower())
+        self.assertIn("honor", res.lower())
+
+    def test_nabard_energy_irrigation_translation(self):
+        corrupted_input = "ऊजार्ट बचति के साथ नबार्टधि सर्तिचाई सुविधिा उपलब्ध कराना"
+        res = translation_engine.translate_paragraph(corrupted_input, "Marathi")
+        self.assertNotIn("nabartdhi", res.lower())
+        self.assertNotIn("srtichhai", res.lower())
+        self.assertNotIn("uzart", res.lower())
+        self.assertIn("nabard", res.lower())
+        self.assertIn("irrigation", res.lower())
+
 if __name__ == "__main__":
     unittest.main()

@@ -195,21 +195,45 @@ class OCRService:
                 grid = []
                 for tp in table_candidates:
                     t_str = tp.get("text", "").strip()
-                    if "|" in t_str:
+                    if tp.get("table_grid"):
+                        for r in tp.get("table_grid"):
+                            grid.append(r)
+                    elif "|" in t_str:
                         cells = [c.strip() for c in t_str.split("|") if c.strip()]
+                        if cells: grid.append(cells)
                     else:
-                        cells = [c.strip() for c in re.split(r'\s{2,}', t_str) if c.strip()]
-                    if cells:
-                        grid.append(cells)
-                if grid and len(grid[0]) >= 2:
+                        cells = [c.strip() for c in re.split(r'\s{2,}|\t', t_str) if c.strip()]
+                        if cells: grid.append(cells)
+
+                if grid and len(grid) >= 2 and any(len(r) >= 2 for r in grid):
                     max_cols = max(len(r) for r in grid)
                     norm_grid = [r + [""] * (max_cols - len(r)) for r in grid]
+
+                    # Compute combined bounding box for all table rows
+                    all_bboxes = [tp.get("bbox") for tp in table_candidates if tp.get("bbox") and len(tp.get("bbox")) == 4]
+                    combined_bbox = None
+                    if all_bboxes:
+                        min_x = min(b[0] for b in all_bboxes)
+                        min_y = min(b[1] for b in all_bboxes)
+                        max_x = max(b[2] for b in all_bboxes)
+                        max_y = max(b[3] for b in all_bboxes)
+                        combined_bbox = [min_x, min_y, max_x, max_y]
+
+                    # Construct Markdown table string for text representation
+                    orig_md_lines = []
+                    if norm_grid:
+                        orig_md_lines.append("| " + " | ".join(norm_grid[0]) + " |")
+                        orig_md_lines.append("| " + " | ".join(["---"] * len(norm_grid[0])) + " |")
+                        for r in norm_grid[1:]:
+                            orig_md_lines.append("| " + " | ".join(r) + " |")
+
                     result_paras.append({
                         "paragraph": len(result_paras) + 1,
                         "page": table_candidates[0].get("page", 1),
-                        "text": table_candidates[0].get("text", ""),
+                        "text": "\n".join(orig_md_lines),
                         "block_type": "table",
                         "table_grid": norm_grid,
+                        "bbox": combined_bbox or table_candidates[0].get("bbox"),
                         "confidence": 0.99
                     })
                 else:
@@ -220,14 +244,18 @@ class OCRService:
 
         for p in paragraphs:
             txt = p.get("text", "").strip()
+            cols = [c.strip() for c in re.split(r'\||\s{2,}|\t', txt) if c.strip()]
+
             is_tbl_row = False
             if p.get("block_type") == "table" or p.get("table_grid"):
                 is_tbl_row = True
-            elif "|" in txt and len(txt.split("|")) >= 3:
+            elif len(cols) >= 2:
                 is_tbl_row = True
-            elif re.search(r'^\s*[0-9\u0966-\u096F]+[\.\s]', txt) and len(re.split(r'\s{2,}', txt)) >= 3:
-                is_tbl_row = True
-            elif re.search(r'^\s*(?:क्र[\.\s]|उपक्रमाचे|कालावधी|खर्च|एकूण|लाभार्थी|Sr\.|No\.)', txt) and len(re.split(r'\s{2,}|\|', txt)) >= 3:
+            elif any(k in txt for k in [
+                "उपक्रमाचे नाव", "वाक्यप्रचार", "साध्य व प्रगती", "ध्येय", "उपक्रमनिहाय", 
+                "प्रगती तक्ता", "एकूण निष्कर्ष", "Activity Name", "Achievement", "Goal",
+                "Progress", "Sr.", "No.", "तपशील", "कालावधी", "खर्च", "लाभार्थी"
+            ]):
                 is_tbl_row = True
 
             if is_tbl_row:
@@ -244,6 +272,9 @@ class OCRService:
         """Merges adjacent line fragments into complete sentences and reconstructs tabular grids."""
         if not paragraphs:
             return paragraphs
+
+        # Sort paragraphs top-to-bottom by page number and top Y coordinate (bbox[1])
+        paragraphs.sort(key=lambda p: (p.get("page", 1), p.get("bbox", [0, 0, 0, 0])[1] if p.get("bbox") else 0, p.get("bbox", [0, 0, 0, 0])[0] if p.get("bbox") else 0))
 
         # First pass: Auto-detect table grid lines
         paragraphs = cls.detect_table_grid_from_paragraphs(paragraphs)
@@ -397,7 +428,13 @@ class OCRService:
                                     "page_height": page_h,
                                     "source": "digital"
                                 })
-                                para_idx += 1
+                # 3. Sort page blocks (tables and text blocks) by top-to-bottom Y coordinate reading order
+                page_paras.sort(key=lambda p: (p.get("bbox", [0, 0, 0, 0])[1], p.get("bbox", [0, 0, 0, 0])[0]))
+
+                # Reassign paragraph sequence indices in exact natural top-to-bottom reading order
+                for p in page_paras:
+                    p["paragraph"] = para_idx
+                    para_idx += 1
 
                 paragraphs.extend(page_paras)
 

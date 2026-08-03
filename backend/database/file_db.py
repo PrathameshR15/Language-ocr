@@ -106,16 +106,16 @@ class FileDatabase:
             all_texts = [t for t in all_texts if str(t.get("document_id")) != str(doc_id)]
             
             for idx, p in enumerate(paragraphs, start=1):
-                all_texts.append({
-                    "id": f"{doc_id}_p{idx}",
-                    "document_id": str(doc_id),
-                    "paragraph": p.get("paragraph", idx),
-                    "page": p.get("page", 1),
-                    "language": p.get("language", "Unknown"),
-                    "text": p.get("text", ""),
-                    "translated_text": p.get("translated_text", ""),
-                    "confidence": p.get("confidence", 0.9)
-                })
+                p_record = dict(p)
+                p_record["id"] = f"{doc_id}_p{idx}"
+                p_record["document_id"] = str(doc_id)
+                p_record["paragraph"] = p.get("paragraph", idx)
+                p_record["page"] = p.get("page", 1)
+                p_record["language"] = p.get("language", "Unknown")
+                p_record["text"] = p.get("text", "")
+                p_record["translated_text"] = p.get("translated_text", "")
+                p_record["confidence"] = p.get("confidence", 0.9)
+                all_texts.append(p_record)
                 
             data["extracted_texts"] = all_texts
             self._write_data_sync(data)

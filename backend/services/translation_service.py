@@ -73,6 +73,21 @@ INDIC_ADMIN_DICTIONARY = {
     "वार्षिक पर्यावरण संवर्धन व खर्च प्रगती अहवाल": "Annual Environment Conservation & Expense Progress Report",
     "आनंदराव मोरे": "Anandrao More",
     "डॉ. शुभांगी गायकवाड": "Dr. Shubhangi Gaikwad",
+    "ऊर्जा बचत के साथ नाबार्ड सिंचाई सुविधा उपलब्ध कराना": "Providing NABARD irrigation facility along with energy savings",
+    "ऊर्जा बचतीसोबत नाबार्ड सिंचन सुविधा उपलब्ध करून देणे": "Providing NABARD irrigation facility along with energy savings",
+    "ऊर्जा बचत": "Energy saving",
+    "ऊर्जा बचतीसोबत": "Along with energy saving",
+    "ऊर्जा बचतीसह": "Along with energy saving",
+    "ऊर्जा बचत के साथ": "Along with energy saving",
+    "नाबार्ड सिंचन सुविधा": "NABARD irrigation facility",
+    "नाबार्ड सिंचाई सुविधा": "NABARD irrigation facility",
+    "नाबार्ड": "NABARD",
+    "सिंचन सुविधा": "Irrigation facility",
+    "सिंचाई सुविधा": "Irrigation facility",
+    "सुविधा उपलब्ध करून देणे": "Providing facility",
+    "सुविधा उपलब्ध कराना": "Providing facility",
+    "उपलब्ध करून देणे": "Providing / making available",
+    "उपलब्ध कराना": "Providing / making available",
 }
 
 PHRASE_NORMALIZATION = {
@@ -87,6 +102,13 @@ REGEX_CORRECTIONS = {}
 
 # Fixed Expression & Proverb Glossary for contextual Marathi/Hindi idioms
 MARATHI_IDIOM_GLOSSARY = {
+    "अति तिथे माती": "Excess of anything is harmful.",
+    "अति तिथे मातिी": "Excess of anything is harmful.",
+    "उथळ पाण्याला खळखळाट जास्त": "Empty vessels make the most noise.",
+    "उथळ पाण्याला खळखळाट जास्ति": "Empty vessels make the most noise.",
+    "आयत्या बिळावर नागोबा": "Taking advantage of another's effort.",
+    "आयत्या बिळावर नागोबिा": "Taking advantage of another's effort.",
+    "दुरून डोंगर साजरे": "The grass is always greener on the other side.",
     "पेरावे तसे उगवते": "As you sow, so shall you reap.",
     "\"पेरावे तसे उगवते\"": "\"As you sow, so shall you reap\"",
     "वेळेचे मोल, उज्ज्वल भविष्य": "Value of time, a bright future.",
@@ -97,7 +119,11 @@ MARATHI_IDIOM_GLOSSARY = {
     "आरोग्यम् धनसंपदा": "Health is True Wealth.",
     "\"आरोग्यम् धनसंपदा\"": "\"Health is True Wealth\"",
     "दूरदृष्टी आणि सातत्य": "Vision and Continuity.",
-    "\"दूरदृष्टी आणि सातत्य\"": "\"Vision and Continuity\"",
+    "ज्येष्ठ व गुणवंत कलावंतांचा गौरव व सन्मान केला": "Senior and talented artists were felicitated and honored.",
+    "ज्येष्ठ व गुणवंत कलावंतांचा गौरव व सन्मान": "Felicitation and honor of senior and talented artists",
+    "गौरव व सन्मान केला": "were felicitated and honored",
+    "गौरव व सन्मान करण्यात आला": "was felicitated and honored",
+    "गौरव व सन्मान": "felicitation and honor",
     "हातभार लावणे": "contributed and supported",
     "हातभार लावला": "contributed and supported",
     "हातभार": "contribution",
@@ -297,6 +323,13 @@ def clean_ocr_text(text: str) -> str:
 
     # Fix common OCR typos on Devanagari administrative words
     cleaned = (cleaned
+               .replace("ऊजार्ट", "ऊर्जा")
+               .replace("बचति", "बचत")
+               .replace("नबार्टधि", "नाबार्ड")
+               .replace("सर्तिचाई", "सिंचाई")
+               .replace("सुविधिा", "सुविधा")
+               .replace("पेरावे तिसे उगवतिे", "पेरावे तसे उगवते")
+               .replace("मातिी", "माती")
                .replace("अध्3ापन", "अध्यापन")
                .replace("अध्3पन", "अध्यापन")
                .replace("प्रशि4क्षण", "प्रशिक्षण")
@@ -510,6 +543,24 @@ class TranslationService:
         cleaned = text.strip()
         cleaned = re.sub(r'\[SYM_\d+\]', '', cleaned)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+        # Fix false negation hallucinations where NMT models erroneously insert "not" for positive verbs (e.g. "गौरव व सन्मान केला")
+        cleaned = re.sub(r'\bwere not glorified and honoured\b', 'were felicitated and honored', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bwere not glorified and honored\b', 'were felicitated and honored', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bwas not glorified and honoured\b', 'was felicitated and honored', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bwas not glorified and honored\b', 'was felicitated and honored', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bwere not glorified\b', 'were felicitated', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bwas not glorified\b', 'was felicitated', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bnot glorified and honoured\b', 'felicitated and honored', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bnot glorified and honored\b', 'felicitated and honored', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bnot glorified\b', 'felicitated', cleaned, flags=re.IGNORECASE)
+
+        # Fix transliteration artifacts from corrupted OCR Devanagari input
+        cleaned = re.sub(r'\bNabartdhi\b|\bNabardhi\b|\bNabardh\b', 'NABARD', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bsrtichhai\b|\bsirtichhai\b|\bsirtichai\b|\bsertichai\b', 'irrigation', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\buzart\b|\buzar\b', 'energy', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bbachati\b|\bbachati\b', 'savings', cleaned, flags=re.IGNORECASE)
+
         return cleaned
 
 

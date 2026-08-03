@@ -13,62 +13,40 @@ class PDFGenerationService:
 
     @staticmethod
     def generate_in_place_redacted_pdf(
-        orig_path: str,
+        orig_pdf_path: str,
         paragraphs: List[Dict[str, Any]],
         metadata: Dict[str, Any],
         output_path: str
     ) -> bool:
-        """Opens original PDF or Image document, redacts original text blocks in-place while keeping vector graphics/images/borders intact, and inserts translated English text into original bounding boxes."""
-        if not orig_path or not os.path.exists(orig_path):
+        """Opens original PDF, redacts original text blocks in-place while keeping vector background/borders, and inserts translated English text into original bounding boxes."""
+        if not orig_pdf_path or not os.path.exists(orig_pdf_path):
             return False
 
         try:
-            ext = orig_path.lower().rsplit('.', 1)[-1]
-            is_pdf = (ext == "pdf")
-            is_img = (ext in ["png", "jpg", "jpeg", "tiff", "bmp"])
-
-            if not (is_pdf or is_img):
-                return False
-
-            if is_pdf:
-                doc = fitz.open(orig_path)
-            else:
-                doc = fitz.open()
-                img_doc = fitz.open(orig_path)
-                img_rect = img_doc[0].rect
-                pdf_page = doc.new_page(width=img_rect.width, height=img_rect.height)
-                pdf_page.insert_image(pdf_page.rect, filename=orig_path)
-                img_doc.close()
+            doc = fitz.open(orig_pdf_path)
 
             pages_map: Dict[int, List[Dict[str, Any]]] = {}
             for p in paragraphs:
                 pg = p.get("page", 1)
                 pages_map.setdefault(pg, []).append(p)
 
-            for pg_num in sorted(pages_map.keys()):
-                if is_pdf:
-                    if pg_num > len(doc):
-                        continue
-                    pdf_page = doc[pg_num - 1]
-                else:
-                    pdf_page = doc[0]
+            for pg_num, page_paras in pages_map.items():
+                if pg_num > len(doc):
+                    continue
 
-                page_paras = pages_map[pg_num]
+                pdf_page = doc[pg_num - 1]
 
-                # 1. Add redactions/whiteout over original text bounding boxes
+                # 1. Add redactions over original text bounding boxes
                 for p in page_paras:
                     bbox = p.get("bbox")
                     if bbox and len(bbox) == 4:
                         rect = fitz.Rect(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
-                        if is_pdf:
-                            pdf_page.add_redact_annot(rect, fill=(1, 1, 1))
-                        else:
-                            pdf_page.draw_rect(rect, color=(1, 1, 1), fill=(1, 1, 1))
+                        pdf_page.add_redact_annot(rect, fill=(1, 1, 1))
 
-                if is_pdf:
-                    pdf_page.apply_redactions()
+                # Apply redactions to erase original text
+                pdf_page.apply_redactions()
 
-                # 2. Insert translated text in-place into original bounding boxes with adaptive font scaling
+                # 2. Insert translated text in-place into original bounding boxes with adaptive font scaling & symbol preservation
                 from backend.services.translation_service import normalize_indic_digits
 
                 for p in page_paras:
@@ -85,9 +63,11 @@ class PDFGenerationService:
                             col_w = (t_x1 - t_x0) / float(num_cols)
                             row_h = (t_y1 - t_y0) / float(num_rows)
 
+                            import re
                             for r_idx, row in enumerate(grid):
                                 for c_idx, cell_val in enumerate(row):
-                                    c_txt = normalize_indic_digits(str(cell_val or "")).strip()
+                                    c_txt = normalize_indic_digits(str(cell_val or ""))
+                                    c_txt = re.sub(r'[\u0900-\u0DFF]', '', c_txt).strip()
 
                                     c_x0 = t_x0 + (c_idx * col_w)
                                     c_y0 = t_y0 + (r_idx * row_h)
@@ -95,6 +75,7 @@ class PDFGenerationService:
                                     c_y1 = c_y0 + row_h
                                     cell_rect = fitz.Rect(c_x0, c_y0, c_x1, c_y1)
 
+                                    # Header row formatting (#1e4d35 dark green fill)
                                     if r_idx == 0:
                                         pdf_page.draw_rect(cell_rect, color=(0.12, 0.30, 0.21), fill=(0.12, 0.30, 0.21))
                                         pdf_page.insert_textbox(cell_rect, c_txt, fontsize=9, fontname="helv-bold", color=(1, 1, 1), align=1)
@@ -104,8 +85,16 @@ class PDFGenerationService:
                                         pdf_page.insert_textbox(cell_rect, c_txt, fontsize=8.5, fontname="helv", color=(0.1, 0.1, 0.15), align=align_c)
                         continue
 
-                    raw_txt = p.get("translated_text") or p.get("text") or ""
-                    txt = normalize_indic_digits(raw_txt).strip()
+                    raw_txt = p.get("translated_text")
+                    if not raw_txt:
+                        orig = p.get("text", "")
+                        if orig and re.search(r'[\u0900-\u0DFF]', orig):
+                            from backend.services.translation_service import translation_engine
+                            raw_txt = translation_engine.translate_paragraph(orig, p.get("language", "Marathi"))
+                        else:
+                            raw_txt = orig or ""
+                    txt = normalize_indic_digits(raw_txt)
+                    txt = re.sub(r'[\u0900-\u0DFF]', '', txt).strip()
                     if not txt:
                         continue
 
@@ -121,15 +110,13 @@ class PDFGenerationService:
 
                     if bbox and len(bbox) == 4 and (bbox[2] - bbox[0]) > 5 and (bbox[3] - bbox[1]) > 5:
                         rect = fitz.Rect(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
-                        box_h = rect.height
-                        start_fs = float(p.get("font_size") or (14 if block_type == "title" else 11 if block_type == "section_heading" else 10))
-                        start_fs = max(5.0, min(start_fs, max(6.0, box_h)))
-                        fs = start_fs
+                        fs = float(p.get("font_size") or (14 if block_type == "title" else 11 if block_type == "section_heading" else 10))
 
-                        # Adaptive font scaling loop - strictly stays within original bounding box
+                        # Adaptive font scaling loop - never overflows box boundaries
                         rc = pdf_page.insert_textbox(rect, txt, fontsize=fs, fontname=font_name, align=align_code, color=(0.1, 0.1, 0.15))
-                        while rc < 0 and fs > 4.0:
+                        while rc < 0 and fs > 5.0:
                             fs -= 0.5
+                            rect = fitz.Rect(float(bbox[0]), float(bbox[1]), float(bbox[2]) + 10.0, float(bbox[3]) + 4.0)
                             rc = pdf_page.insert_textbox(rect, txt, fontsize=fs, fontname=font_name, align=align_code, color=(0.1, 0.1, 0.15))
 
             doc.save(output_path)
@@ -173,12 +160,29 @@ class PDFGenerationService:
 
                 pdf_page = doc.new_page(width=page_w, height=page_h)
 
+                # Draw top subtle header bar
+                pdf_page.draw_rect(fitz.Rect(0, 0, page_w, 24), color=(0.17, 0.42, 0.69), fill=(0.17, 0.42, 0.69))
+                header_title = f"{metadata.get('state', 'OFFICIAL').upper()} - ENGLISH TRANSLATION"
+                pdf_page.insert_textbox(fitz.Rect(15, 4, page_w - 15, 20), header_title, fontsize=8, fontname="helv-bold", color=(1, 1, 1), align=0)
+
+                # Collect horizontal line markers and draw divider lines
+                y_positions = [p.get("bbox", [0, 0, 0, 0])[1] for p in page_paras if p.get("bbox")]
+                if y_positions:
+                    top_y = min(y_positions)
+                    pdf_page.draw_line(fitz.Point(30, max(30, top_y - 8)), fitz.Point(page_w - 30, max(30, top_y - 8)), color=(0.17, 0.42, 0.69), width=1.2)
+
                 for p in page_paras:
                     bbox = p.get("bbox")
                     block_type = p.get("block_type", "paragraph")
 
                     if block_type == "table" and (p.get("translated_table_grid") or p.get("table_grid")):
                         grid = p.get("translated_table_grid") or p.get("table_grid")
+                        if not bbox or len(bbox) != 4:
+                            num_rows = len(grid) if grid else 1
+                            t_y0 = max(40.0, float(p.get("paragraph", 1) * 25.0))
+                            t_y1 = min(page_h - 40.0, t_y0 + (num_rows * 22.0))
+                            bbox = [30.0, t_y0, page_w - 30.0, t_y1]
+
                         if bbox and len(bbox) == 4 and grid:
                             t_x0, t_y0, t_x1, t_y1 = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
                             num_rows = len(grid)
@@ -201,12 +205,19 @@ class PDFGenerationService:
                                         pdf_page.draw_rect(cell_rect, color=(0.12, 0.30, 0.21), fill=(0.12, 0.30, 0.21))
                                         pdf_page.insert_textbox(cell_rect, c_txt, fontsize=9, fontname="helv-bold", color=(1, 1, 1), align=1)
                                     else:
-                                        pdf_page.draw_rect(cell_rect, color=(0.75, 0.75, 0.75))
+                                        pdf_page.draw_rect(cell_rect, color=(0.75, 0.75, 0.75), fill=(1, 1, 1))
                                         align_c = 1 if (c_idx == 0 or c_idx == num_cols - 1) else 0
                                         pdf_page.insert_textbox(cell_rect, c_txt, fontsize=8.5, fontname="helv", color=(0.1, 0.1, 0.15), align=align_c)
                         continue
 
-                    raw_txt = p.get("translated_text") or p.get("text") or ""
+                    raw_txt = p.get("translated_text")
+                    if not raw_txt:
+                        orig = p.get("text", "")
+                        if orig and re.search(r'[\u0900-\u0DFF]', orig):
+                            from backend.services.translation_service import translation_engine
+                            raw_txt = translation_engine.translate_paragraph(orig, p.get("language", "Marathi"))
+                        else:
+                            raw_txt = orig or ""
                     txt = normalize_indic_digits(raw_txt)
                     txt = re.sub(r'[\u0900-\u0DFF]', '', txt).strip()
                     if not txt:
@@ -223,18 +234,30 @@ class PDFGenerationService:
 
                     font_name = "helv-bold" if is_bold or block_type in ["title", "section_heading", "signature"] else "helv"
 
-                    if bbox and len(bbox) == 4 and (bbox[2] - bbox[0]) > 5 and (bbox[3] - bbox[1]) > 5:
+                    if bbox and len(bbox) == 4 and (bbox[2] - bbox[0]) > 10 and (bbox[3] - bbox[1]) > 5:
                         x0, y0, x1, y1 = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
+
+                        # Ensure valid bounds
+                        x0 = max(15.0, min(x0, page_w - 50.0))
+                        x1 = max(x0 + 40.0, min(x1 + 10.0, page_w - 15.0))
+                        y0 = max(30.0, min(y0, page_h - 30.0))
+                        y1 = max(y0 + 14.0, min(y1 + 5.0, page_h - 15.0))
+
                         rect = fitz.Rect(x0, y0, x1, y1)
 
-                        # Auto-scale font size so text fits exact bounding box
+                        # Auto-scale font size so text fits bounding box
                         start_fs = float(p.get("font_size") or (14 if block_type == "title" else 11 if block_type == "section_heading" else 10))
                         fs = start_fs
 
                         rc = pdf_page.insert_textbox(rect, txt, fontsize=fs, fontname=font_name, align=align_code, color=(0.1, 0.1, 0.15))
-                        while rc < 0 and fs > 4.0:
+                        while rc < 0 and fs > 6.0:
                             fs -= 0.5
+                            rect = fitz.Rect(x0, y0, x1 + 15.0, y1 + 10.0)
                             rc = pdf_page.insert_textbox(rect, txt, fontsize=fs, fontname=font_name, align=align_code, color=(0.1, 0.1, 0.15))
+
+                        # If block is section heading, draw subtle underline accent
+                        if block_type == "section_heading":
+                            pdf_page.draw_line(fitz.Point(x0, min(page_h - 10, y1 + 2)), fitz.Point(min(page_w - 20, x0 + 120), min(page_h - 10, y1 + 2)), color=(0.17, 0.42, 0.69), width=0.8)
 
                     else:
                         # Fallback for blocks without bbox
@@ -242,6 +265,11 @@ class PDFGenerationService:
                         if y_offset < (page_h - 40):
                             rect = fitz.Rect(40, y_offset, page_w - 40, y_offset + 20)
                             pdf_page.insert_textbox(rect, txt, fontsize=10, fontname=font_name, align=align_code)
+
+                # Bottom footer line & page number
+                pdf_page.draw_line(fitz.Point(30, page_h - 25), fitz.Point(page_w - 30, page_h - 25), color=(0.7, 0.75, 0.8), width=0.5)
+                footer_str = f"Page {pg_num} of {len(pages_map)} | Ref: {metadata.get('doc_number', 'Govt Award Notice')}"
+                pdf_page.insert_textbox(fitz.Rect(30, page_h - 22, page_w - 30, page_h - 8), footer_str, fontsize=7, fontname="helv", color=(0.4, 0.45, 0.5), align=1)
 
             doc.save(output_path)
             doc.close()
@@ -385,6 +413,50 @@ class PDFGenerationService:
             p_idx = 0
             while p_idx < len(paragraphs):
                 p = paragraphs[p_idx]
+                grid = p.get("translated_table_grid") or p.get("table_grid")
+                block_type = p.get("block_type", "paragraph")
+
+                # Structured Multi-Row Table Grid Rendering
+                if (block_type == "table" or grid) and grid:
+                    try:
+                        table_data = []
+                        for r_idx, row in enumerate(grid):
+                            row_flowables = []
+                            for c_val in row:
+                                c_str = normalize_indic_digits(str(c_val or "")).strip()
+                                c_str = re.sub(r'[\u0900-\u0DFF]', '', c_str).strip()
+                                c_style = ParagraphStyle(f'TCell_{r_idx}_{p_idx}', parent=body_style, fontSize=8.5, leading=11)
+                                if r_idx == 0:
+                                    c_style.fontName = 'Helvetica-Bold'
+                                    c_style.textColor = colors.white
+                                row_flowables.append(Paragraph(c_str if c_str else "&nbsp;", c_style))
+                            table_data.append(row_flowables)
+
+                        col_count = max(len(r) for r in grid) if grid else 1
+                        avail_w = 520
+                        col_w = avail_w / float(max(1, col_count))
+                        col_widths = [col_w] * col_count
+
+                        rl_table = Table(table_data, colWidths=col_widths)
+                        rl_table.setStyle(TableStyle([
+                            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e4d35')),
+                            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e0')),
+                            ('BACKGROUND', (0,1), (-1,-1), colors.HexColor('#ffffff')),
+                            ('TOPPADDING', (0,0), (-1,-1), 5),
+                            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                            ('LEFTPADDING', (0,0), (-1,-1), 6),
+                            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+                        ]))
+                        story.append(rl_table)
+                        story.append(Spacer(1, 10))
+                        p_idx += 1
+                        continue
+                    except Exception as te:
+                        logger.warning(f"ReportLab table flowable generation failed: {te}")
+
                 trans_text = p.get("translated_text", "")
                 if not trans_text:
                     p_idx += 1
@@ -423,48 +495,6 @@ class PDFGenerationService:
                         story.append(sig_table)
                         p_idx += 2
                         continue
-
-                # Structured Multi-Row Table Grid Rendering
-                grid = p.get("translated_table_grid") or p.get("table_grid")
-                if (p.get("block_type") == "table" or grid) and grid:
-                    try:
-                        table_data = []
-                        for r_idx, row in enumerate(grid):
-                            row_flowables = []
-                            for c_val in row:
-                                c_str = normalize_indic_digits(str(c_val or "")).strip()
-                                c_str = re.sub(r'[\u0900-\u0DFF]', '', c_str).strip()
-                                c_style = ParagraphStyle(f'TCell_{r_idx}', parent=body_style, fontSize=9, leading=12)
-                                if r_idx == 0:
-                                    c_style.fontName = 'Helvetica-Bold'
-                                    c_style.textColor = colors.white
-                                row_flowables.append(Paragraph(c_str, c_style))
-                            table_data.append(row_flowables)
-
-                        col_count = max(len(r) for r in grid) if grid else 1
-                        avail_w = 520
-                        col_w = avail_w / float(max(1, col_count))
-                        col_widths = [col_w] * col_count
-
-                        rl_table = Table(table_data, colWidths=col_widths)
-                        rl_table.setStyle(TableStyle([
-                            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e4d35')),
-                            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-                            ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e0')),
-                            ('TOPPADDING', (0,0), (-1,-1), 5),
-                            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-                            ('LEFTPADDING', (0,0), (-1,-1), 6),
-                            ('RIGHTPADDING', (0,0), (-1,-1), 6),
-                        ]))
-                        story.append(Spacer(1, 6))
-                        story.append(rl_table)
-                        story.append(Spacer(1, 8))
-                        p_idx += 1
-                        continue
-                    except Exception as te:
-                        logger.warning(f"ReportLab table rendering fallback: {te}")
 
                 # Table cell format (key | value)
                 if " | " in strip_txt:
