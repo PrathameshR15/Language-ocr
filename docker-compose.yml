@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: gov_doc_translation_system
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=AI Multilingual Document Translation System
+      - DEBUG=True
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - ./uploads:/app/uploads
+      - ./translated:/app/translated
+      - ./logs:/app/logs
+      - ./data:/app/data
+    restart: unless-stopped

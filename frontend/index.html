@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Universal Document Translator & Language Predictor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Background Ambient Glow Orbs -->
+    <div class="ambient-orb orb-1"></div>
+    <div class="ambient-orb orb-2"></div>
+    <div class="ambient-orb orb-3"></div>
+
+    <header class="navbar">
+        <div class="logo">
+            <div class="logo-icon-wrap">
+                <span class="logo-icon">🌐</span>
+                <span class="logo-sparkle">⚡</span>
+            </div>
+            <div>
+                <h1>DocTranslate <span class="gradient-text">AI</span></h1>
+                <p class="subtitle-nav">Automatic Language Prediction & Original-Format English Translator</p>
+            </div>
+        </div>
+        <div class="nav-actions">
+            <a href="/docs" target="_blank" class="btn btn-glass">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                API Docs
+            </a>
+            <button id="exportExcelBtn" class="btn btn-glass">
+                📊 Export Metadata Excel
+            </button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- SIMPLIFIED UPLOAD CARD -->
+        <section class="glass-card hero-upload-card">
+            <div class="card-header text-center">
+                <h2>Upload Any Document for Automatic Translation</h2>
+                <p class="subtitle">Upload PDF, Word (.docx), Text (.txt), Scanned Images (PNG/JPG/TIFF), or ZIP archives. Language is automatically detected and translated to English in the <strong>same format</strong> as uploaded.</p>
+            </div>
+            
+            <div id="dropzone" class="dropzone">
+                <input type="file" id="fileInput" multiple accept=".pdf,.docx,.doc,.txt,.png,.jpg,.jpeg,.tiff,.zip">
+                <div class="dropzone-content">
+                    <div class="upload-icon-circle">
+                        <svg class="cloud-icon" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                    </div>
+                    <p class="drop-text"><strong>Drag & drop your files here</strong> or <span class="browse-link">browse computer</span></p>
+                    <p class="file-types">Accepts PDF, DOCX, TXT, PNG, JPG, TIFF, ZIP &bull; Auto-detects 16 Indian & Global Languages</p>
+                    <div class="language-tags-row">
+                        <span class="lang-pill">PDF &rarr; PDF</span>
+                        <span class="lang-pill">Word (.docx) &rarr; Word (.docx)</span>
+                        <span class="lang-pill">Text (.txt) &rarr; Text (.txt)</span>
+                        <span class="lang-pill">Images &rarr; PDF</span>
+                        <span class="lang-pill">Auto Language Predictor</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="uploadProgress" class="progress-bar-container hidden">
+                <div class="progress-bar">
+                    <div id="progressFill" class="progress-fill"></div>
+                </div>
+                <div class="progress-status-wrap">
+                    <div class="spinner"></div>
+                    <p id="progressStatus">Predicting language & converting to English in original format...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- SEARCH & FILTER CARD -->
+        <section class="glass-card search-card">
+            <div class="search-bar-grid">
+                <div class="input-group search-input">
+                    <label for="searchInput">
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        Search Documents
+                    </label>
+                    <input type="text" id="searchInput" placeholder="Search keywords across original or translated documents...">
+                </div>
+                <div class="input-group">
+                    <label for="langFilter">Language</label>
+                    <select id="langFilter">
+                        <option value="all">All Languages</option>
+                        <option value="Hindi">Hindi (हिंदी)</option>
+                        <option value="Tamil">Tamil (தமிழ்)</option>
+                        <option value="Telugu">Telugu (తెలుగు)</option>
+                        <option value="Marathi">Marathi (मराठी)</option>
+                        <option value="Bengali">Bengali (বাংলা)</option>
+                        <option value="Gujarati">Gujarati (ગુજરાતી)</option>
+                        <option value="Kannada">Kannada (ಕನ್ನಡ)</option>
+                        <option value="Malayalam">Malayalam (മലയാളം)</option>
+                        <option value="Punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
+                        <option value="Odia">Odia (ଓଡ଼ିଆ)</option>
+                        <option value="Assamese">Assamese (অসমীয়া)</option>
+                        <option value="Urdu">Urdu (اردو)</option>
+                        <option value="English">English</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="stateFilter">State</label>
+                    <select id="stateFilter">
+                        <option value="all">All States</option>
+                        <option value="Maharashtra">Maharashtra</option>
+                        <option value="Delhi">Delhi / UT</option>
+                        <option value="Tamil Nadu">Tamil Nadu</option>
+                        <option value="Uttar Pradesh">Uttar Pradesh</option>
+                        <option value="Karnataka">Karnataka</option>
+                        <option value="Gujarat">Gujarat</option>
+                        <option value="West Bengal">West Bengal</option>
+                        <option value="Telangana">Telangana</option>
+                        <option value="Rajasthan">Rajasthan</option>
+                        <option value="Bihar">Bihar</option>
+                        <option value="Madhya Pradesh">Madhya Pradesh</option>
+                        <option value="Kerala">Kerala</option>
+                        <option value="Punjab">Punjab</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="deptFilter">Department</label>
+                    <select id="deptFilter">
+                        <option value="all">All Departments</option>
+                        <option value="Revenue">Revenue & Land</option>
+                        <option value="Finance">Finance & Tax</option>
+                        <option value="Health">Health & Family Welfare</option>
+                        <option value="Transport">Transport & Motor Vehicles</option>
+                        <option value="Urban">Urban Development</option>
+                        <option value="Agriculture">Agriculture & Farmers</option>
+                        <option value="Law">Law & Order / Home</option>
+                        <option value="General">General Administration</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- DASHBOARD GRID -->
+        <section class="dashboard-grid">
+            <!-- DOCUMENT LIST -->
+            <div class="glass-card doc-list-card">
+                <div class="card-title-row">
+                    <h3>Uploaded Files</h3>
+                    <span class="count-badge" id="docCount">0</span>
+                    <button id="deleteAllDocsBtn" class="btn btn-danger-glass btn-sm hidden" style="margin-left: auto;" title="Delete All Uploaded Documents">
+                        🗑️ Delete All
+                    </button>
+                </div>
+                <div id="docList" class="doc-list">
+                    <div class="empty-state">
+                        <div class="empty-icon">📄</div>
+                        <p>No documents uploaded yet.</p>
+                        <span>Upload a document above to auto-detect its language & translate.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DOCUMENT COMPARISON & VIEWER -->
+            <div class="glass-card doc-viewer-card">
+                <div class="viewer-header">
+                    <div class="title-wrap">
+                        <h3 id="viewerTitle">Document Translation Preview</h3>
+                        <button id="renameHeaderBtn" class="btn-icon hidden" title="Rename Document">✏️</button>
+                    </div>
+                    <div id="viewerActions" class="viewer-actions hidden">
+                        <button id="viewPdfHeaderBtn" class="btn btn-glass btn-sm" title="View Output PDF in UI">
+                            👁️ View PDF
+                        </button>
+                        <button id="copyTranslationBtn" class="btn btn-glass btn-sm" title="Copy English Text">
+                            📋 Copy Text
+                        </button>
+                        <a id="dlOriginalFormatBtn" target="_blank" class="btn btn-primary-gradient btn-sm">
+                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span id="dlOriginalFormatText">Download Translated</span>
+                        </a>
+                        <a id="dlPdfBtn" target="_blank" class="btn btn-glass btn-sm">
+                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                            Download PDF
+                        </a>
+                        <button id="deleteDocBtn" class="btn btn-danger-glass btn-sm" title="Delete Document">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+
+                <div id="viewerPlaceholder" class="empty-state">
+                    <div class="empty-icon">🔍</div>
+                    <p>Select a document from the list</p>
+                    <span>View original text, predicted language, and English translation side-by-side.</span>
+                </div>
+
+                <div id="viewerContent" class="viewer-content hidden">
+                    <!-- PROMINENT DOWNLOAD CALLOUT BANNER -->
+                    <div class="download-callout-banner">
+                        <div class="callout-text">
+                            <span class="callout-icon">✨</span>
+                            <div>
+                                <strong id="downloadCalloutTitle">English Translation Ready!</strong>
+                                <p id="downloadCalloutSub">Click below to view or download your translated document instantly.</p>
+                            </div>
+                        </div>
+                        <div class="callout-buttons">
+                            <button id="viewPdfCalloutBtn" class="btn btn-glass">
+                                👁️ View PDF in UI
+                            </button>
+                            <a id="dlOriginalFormatBtn2" target="_blank" class="btn btn-download-glow">
+                                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                <span id="dlOriginalFormatText2">Download Translated Document</span>
+                            </a>
+                            <a id="dlPdfBtn2" target="_blank" class="btn btn-glass">
+                                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                Download as PDF
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- QUALITY ASSESSMENT AUDIT BAR -->
+                    <div class="qa-audit-banner">
+                        <div class="qa-chip overall"><span class="chip-label">⭐ System Score:</span> <span id="qaOverall" class="chip-val">98.2%</span></div>
+                        <div class="qa-chip"><span class="chip-label">🔍 OCR:</span> <span id="qaOcr" class="chip-val">98.5%</span></div>
+                        <div class="qa-chip"><span class="chip-label">🌐 Translation:</span> <span id="qaTrans" class="chip-val">98.0%</span></div>
+                        <div class="qa-chip"><span class="chip-label">📐 Layout:</span> <span id="qaLayout" class="chip-val">98.2%</span></div>
+                        <div class="qa-chip"><span class="chip-label">🎨 Formatting:</span> <span id="qaFormat" class="chip-val">97.8%</span></div>
+                        <div class="qa-chip"><span class="chip-label">📊 Metadata:</span> <span id="qaMeta" class="chip-val">100%</span></div>
+                    </div>
+
+                    <!-- METADATA CHIPS & VIEW TABS -->
+                    <div class="viewer-toolbar-row">
+                        <div class="metadata-banner">
+                            <div class="meta-chip"><span class="chip-label">State:</span> <span id="metaState" class="chip-val">N/A</span></div>
+                            <div class="meta-chip"><span class="chip-label">Dept:</span> <span id="metaDept" class="chip-val">N/A</span></div>
+                            <div class="meta-chip"><span class="chip-label">Doc No:</span> <span id="metaDocNo" class="chip-val">N/A</span></div>
+                            <div class="meta-chip"><span class="chip-label">Date:</span> <span id="metaDate" class="chip-val">N/A</span></div>
+                            <div class="meta-chip conf-chip"><span class="chip-label">Confidence:</span> <span id="metaConf" class="chip-val">90%</span></div>
+                        </div>
+
+                        <!-- VIEW MODE SWITCHER TABS -->
+                        <div class="view-mode-tabs">
+                            <button class="tab-btn active" data-mode="split">🌐 Side-by-Side</button>
+                            <button class="tab-btn" data-mode="translated">📄 English Only</button>
+                            <button class="tab-btn" data-mode="original">📑 Original Only</button>
+                            <button class="tab-btn" data-mode="pdf">👁️ PDF Preview</button>
+                        </div>
+                    </div>
+
+                    <!-- SIDE BY SIDE COMPARISON GRID -->
+                    <div id="comparisonGrid" class="side-by-side-grid mode-split">
+                        <div class="panel panel-original">
+                            <div class="panel-header">
+                                <span class="panel-dot original-dot"></span>
+                                Original Extracted Text & Predicted Language
+                            </div>
+                            <div id="originalTextPanel" class="panel-content"></div>
+                        </div>
+                        <div class="panel panel-translated">
+                            <div class="panel-header">
+                                <span class="panel-dot translated-dot"></span>
+                                Converted English Translation
+                            </div>
+                            <div id="translatedTextPanel" class="panel-content"></div>
+                        </div>
+                    </div>
+
+                    <!-- INLINE PDF OUTPUT PREVIEW CONTAINER -->
+                    <div id="pdfPreviewContainer" class="pdf-preview-box hidden">
+                        <div class="pdf-toolbar">
+                            <div class="pdf-title">
+                                <span class="pdf-icon">📄</span>
+                                <div>
+                                    <strong id="pdfPreviewTitle">English PDF Document Preview</strong>
+                                    <span id="pdfPreviewSub" class="pdf-sub">Interactive Inline PDF Viewer</span>
+                                </div>
+                            </div>
+                            <div class="pdf-actions">
+                                <button id="pdfFullscreenBtn" class="btn btn-glass btn-sm" title="Expand to Fullscreen">⛶ Fullscreen</button>
+                                <a id="pdfOpenNewTabBtn" target="_blank" class="btn btn-glass btn-sm">↗️ Open in New Tab</a>
+                                <a id="pdfDownloadDirectBtn" target="_blank" class="btn btn-primary-gradient btn-sm">📥 Download PDF</a>
+                            </div>
+                        </div>
+                        <div class="pdf-frame-wrapper">
+                            <div id="pdfLoader" class="pdf-loader hidden">
+                                <div class="spinner"></div>
+                                <span>Rendering PDF Document...</span>
+                            </div>
+                            <iframe id="pdfFrame" class="pdf-iframe" src="about:blank"></iframe>
+                        </div>
+                    </div>
+
+
+                    <!-- METADATA JSON INSPECTOR -->
+                    <div class="metadata-json-box">
+                        <div class="json-header">
+                            <h4>Extracted Document Intelligence (JSON)</h4>
+                            <span class="json-tag">JSON</span>
+                        </div>
+                        <pre id="jsonViewer"></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- RENAME DOCUMENT MODAL -->
+    <div id="renameModal" class="modal-backdrop hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-header">
+                <h3>Rename Document</h3>
+                <button id="closeRenameModal" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label for="renameInput">Document Title / Filename</label>
+                <input type="text" id="renameInput" placeholder="Enter new document name...">
+                <p class="input-tip">Give your document a clear, custom title. Format extension is preserved automatically.</p>
+            </div>
+            <div class="modal-footer">
+                <button id="cancelRenameBtn" class="btn btn-glass">Cancel</button>
+                <button id="saveRenameBtn" class="btn btn-primary-gradient">Save Name</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FULLSCREEN PDF MODAL -->
+    <div id="pdfModal" class="modal-backdrop hidden">
+        <div class="modal-card glass-card pdf-modal-card">
+            <div class="modal-header">
+                <div class="title-wrap">
+                    <span>📄</span>
+                    <h3 id="pdfModalTitle">PDF Preview</h3>
+                </div>
+                <div class="modal-header-actions">
+                    <a id="pdfModalNewTabBtn" target="_blank" class="btn btn-glass btn-sm">↗️ Open in New Tab</a>
+                    <a id="pdfModalDownloadBtn" target="_blank" class="btn btn-primary-gradient btn-sm">📥 Download PDF</a>
+                    <button id="closePdfModal" class="btn-close">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body pdf-modal-body">
+                <iframe id="pdfModalFrame" class="pdf-modal-iframe" src="about:blank"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
+
