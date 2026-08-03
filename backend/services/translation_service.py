@@ -12,6 +12,45 @@ from backend.utils.unicode_utils import (
     clean_unrestored_placeholders
 )
 
+INDICTRANS_LANG_MAP = {
+    "marathi": "mar_Deva",
+    "hindi": "hin_Deva",
+    "gujarati": "guj_Gujr",
+    "tamil": "tam_Taml",
+    "telugu": "tel_Telu",
+    "bengali": "ben_Beng",
+    "kannada": "kan_Knda",
+    "malayalam": "mal_Mlym",
+    "punjabi": "pan_Guru",
+    "odia": "ory_Orya",
+    "assamese": "asm_Beng",
+    "urdu": "urd_Arab",
+    "sanskrit": "san_Deva",
+    "konkani": "kok_Deva",
+    "maithili": "mai_Deva",
+    "nepali": "npi_Deva",
+    "sindhi": "snd_Deva"
+}
+
+def clean_ocr_text(text: str) -> str:
+    """Cleans OCR artifacts, black squares, and invalid replacement characters before translation."""
+    if not text:
+        return text
+    res = text.replace(chr(0xFFFD), "").replace("\ufffd", "").replace("\uFFFD", "").replace("■", "").replace("□", "").replace("?", "")
+    res = re.sub(r'\?{2,}', '', res)
+    res = re.sub(r'\s+', ' ', res).strip()
+    return res
+
+def is_transliteration_garbage(translated_text: str, original_indic_text: str) -> bool:
+    """Detects whether translation output is literal phonetic Roman transliteration garbage rather than real English."""
+    if not translated_text or not original_indic_text or len(translated_text.split()) < 3:
+        return False
+    words = [w.lower().strip(".,!?:;") for w in translated_text.split() if len(w) > 2]
+    indic_phonetics = {"tithe", "maati", "ugavte", "perave", "nagoba", "karil", "hotey", "ati"}
+    matches = sum(1 for w in words if w in indic_phonetics)
+    return matches >= 2
+
+
 # Indic Administrative Terms Dictionary for exact table cell / heading translation
 INDIC_ADMIN_DICTIONARY = {
     "सचिव": "Secretary",
@@ -28,7 +67,20 @@ INDIC_ADMIN_DICTIONARY = {
     "मुख्य कार्यकारी अधिकारी": "Chief Executive Officer (CEO)",
     "गट विकास अधिकारी": "Block Development Officer (BDO)",
     "महाराष्ट्र शासन": "Government of Maharashtra",
+    "शासन निर्णय": "Government Resolution",
+    "शासन निर्णय क्र.": "Government Resolution No.",
     "भारत सरकार": "Government of India",
+    "रहिवासी पुरावा": "Proof of Residence",
+    "जन्मतारीख दर्शविणारा पुरावा": "Proof of Date of Birth",
+    "पासपोर्ट आकाराचा फोटो": "Passport-size Photograph",
+    "जिल्हा निवडणूक अधिकारी": "District Election Officer",
+    "मुख्य निवडणूक अधिकारी": "Chief Electoral Officer",
+    "मतदार नोंदणी": "Voter Registration",
+    "मतदार यादी": "Electoral Roll",
+    "अर्ज": "Application",
+    "शासकीय": "Government",
+    "सार्वजनिक सूचना": "Public Notice",
+    "अधिकृत संकेतस्थळ": "Official Website",
     "सार्वजनिक बांधकाम विभाग": "Public Works Department (PWD)",
     "आरोग्य विभाग": "Health Department",
     "कृषी विभाग": "Agriculture Department",
@@ -87,8 +139,20 @@ REGEX_CORRECTIONS = {}
 
 # Fixed Expression & Proverb Glossary for contextual Marathi/Hindi idioms
 MARATHI_IDIOM_GLOSSARY = {
+    "अति तिथे माती": "Excess of anything is harmful.",
+    "\"अति तिथे माती\"": "\"Excess of anything is harmful.\"",
+    "अति तिथे मातीी": "Excess of anything is harmful.",
+    "अति तिथे मातिी": "Excess of anything is harmful.",
     "पेरावे तसे उगवते": "As you sow, so shall you reap.",
     "\"पेरावे तसे उगवते\"": "\"As you sow, so shall you reap\"",
+    "पेरावे तिसे उगवतिे": "As you sow, so shall you reap.",
+    "उथळ पाण्याला खळखळाट जास्त": "Empty vessels make the most noise.",
+    "उथळ पाण्याला खळखळाट जास्ती": "Empty vessels make the most noise.",
+    "उथळ पाण्याला खळखळाट जास्ति": "Empty vessels make the most noise.",
+    "आयत्या बिळावर नागोबा": "Taking advantage of another's effort.",
+    "आयत्या बिळावर नागोबिया": "Taking advantage of another's effort.",
+    "आयत्या बिळावर नागोबिा": "Taking advantage of another's effort.",
+    "दुरून डोंगर साजरे": "The grass is always greener on the other side.",
     "वेळेचे मोल, उज्ज्वल भविष्य": "Value of time, a bright future.",
     "\"वेळेचे मोल, उज्ज्वल भविष्य\"": "\"Value of time, a bright future\"",
     "आपला हात, जगन्नाथ": "Self-reliant and empowered (Self-help is the best help).",

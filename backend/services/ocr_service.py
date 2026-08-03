@@ -6,6 +6,14 @@ from backend.services.preprocessing_service import ImagePreprocessingService
 from backend.services.layout_parser_service import layout_parser
 from backend.utils.logger import logger
 
+from backend.utils.unicode_utils import (
+    repair_devanagari_ocr_errors,
+    normalize_dates_and_numbers,
+    merge_lines_into_paragraphs,
+    normalize_indic_digits,
+    normalize_unicode_nfc
+)
+
 # All heavy OCR engines are lazily imported only when first used to keep startup fast
 fitz = None
 easyocr = None
@@ -38,9 +46,9 @@ def _ensure_paddleocr():
         try:
             from paddleocr import PaddleOCR as _PaddleOCR
             PaddleOCR = _PaddleOCR
-        except ImportError:
-            pass
-    return PaddleOCR
+        except Exception:
+            PaddleOCR = False
+    return PaddleOCR if PaddleOCR is not False else None
 
 def _ensure_rapidocr():
     global RapidOCR
@@ -54,13 +62,20 @@ def _ensure_rapidocr():
 
 
 def sanitize_indic_text(text: str) -> str:
-    """Sanitizes text extracted from PDFs with custom font encoding or corrupted glyph cmap markers."""
+    """Sanitizes text extracted from PDFs with custom font encoding, repairs Devanagari OCR errors, and strips black box artifacts."""
     if not text:
         return ""
     # Remove non-standard out-of-range glyph noise inserted by custom PDF font cmaps
     cleaned = re.sub(r'[\u0530-\u058F\u05C0-\u05FF\u1B00-\u1B7F]', '', text)
     cleaned = re.sub(r'[^\S\n]+', ' ', cleaned).strip()
-    return cleaned
+    
+    # Apply Devanagari OCR typo & disjunction repair
+    cleaned = repair_devanagari_ocr_errors(cleaned)
+    # Apply date and number normalization
+    cleaned = normalize_dates_and_numbers(cleaned)
+    
+    return cleaned.strip()
+
 
 class OCRService:
     """Multilingual OCR Engine utilizing EasyOCR, PaddleOCR, & RapidOCR with OpenCV preprocessing."""
