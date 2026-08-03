@@ -278,13 +278,21 @@ class DocumentParserService:
             elif clean_name.lower().startswith("government_document"):
                 display_name = f"Document_{doc_id}.{ext}"
 
+        # Save copy of uploaded document in UPLOAD_DIR for in-place PDF layout rendering
+        saved_input_path = os.path.join(settings.UPLOAD_DIR, f"{doc_id}_{clean_name}")
+        try:
+            with open(saved_input_path, "wb") as sf:
+                sf.write(file_bytes)
+        except Exception as e:
+            logger.warning(f"Could not save original file to UPLOAD_DIR: {e}")
+            saved_input_path = temp_input_path
+
         processing_time = round(time.time() - start_time, 2)
         upload_time_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        metadata_json["temp_input_path"] = temp_input_path
-
-        # Do not save original uploaded document file to disk as per project setting
-        orig_file_path = ""
+        metadata_json["temp_input_path"] = saved_input_path
+        metadata_json["original_pdf_path"] = saved_input_path
+        orig_file_path = saved_input_path
 
         # Step 9 & 10: Run Quality Validation & Calculate Multi-Tier Confidence Scores
         qa_results = quality_validator.validate_translation(paragraphs, metadata_json)

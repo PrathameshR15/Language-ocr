@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from typing import Dict, Tuple, List, Any
+from typing import Dict, Tuple
 
 def classify_character(char: str) -> str:
     """
@@ -212,110 +212,15 @@ def normalize_unicode_nfc(text: str) -> str:
     return unicodedata.normalize('NFC', text)
 
 
-def repair_devanagari_ocr_errors(text: str) -> str:
-    """Repairs common Devanagari and Indic OCR errors, broken matras, split words, and invalid Unicode sequences."""
-    if not text:
-        return text
-
-    res = normalize_unicode_nfc(text)
-
-    # 1. Strip black square artifacts & invalid replacement characters
-    res = res.replace("■", "").replace("□", "").replace("\ufffd", "").replace("", "")
-    res = re.sub(r'[\u25A0-\u25FF]', '', res)  # Remove geometric box shapes
-
-    # 2. Repair common Devanagari OCR misread characters & matra disjunctions
-    # e.g. standalone matras after space: "क र ता" -> "करता", standalone nukta
-    res = re.sub(r'([\u0905-\u0939])\s+([\u093E-\u094D])', r'\1\2', res)
-    # Repair zero-width spaces/joiners inside words
-    res = res.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '')
-
-    # 3. Devanagari common OCR typo dictionary replacements
-    devanagari_typo_fixes = {
-        "सा सन": "शासन",
-        "शा सन": "शासन",
-        "नि र्णय": "निर्णय",
-        "नि णीय": "निर्णय",
-        "म हा राष्ट्र": "महाराष्ट्र",
-        "जिल् हाधिकारी": "जिल्हाधिकारी",
-        "तह सीलदार": "तहसीलदार",
-        "दि नांक": "दिनांक",
-        "प्र क्रि या": "प्रक्रिया",
-    }
-    for typo, fix in devanagari_typo_fixes.items():
-        res = res.replace(typo, fix)
-
-    return res.strip()
-
-
-def normalize_dates_and_numbers(text: str) -> str:
-    """Normalizes dates (e.g. २५/०८/२०२५ -> 25/08/2025), currency, and Indic digits."""
-    if not text:
-        return text
-
-    # First convert Indic digits
-    res = normalize_indic_digits(text)
-
-    # Format slash/dot separated dates: e.g. 25 / 08 / 2025 -> 25/08/2025
-    res = re.sub(r'(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*[/.-]\s*(\d{2,4})', r'\1/\2/\3', res)
-    
-    return res
-
-
-def merge_lines_into_paragraphs(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Merges broken line fragments into coherent paragraph blocks using visual layout coordinates.
-    
-    Lines are grouped if they share the same page, have similar left/right alignment,
-    and vertical distance between consecutive lines is less than 1.5x line height.
+def has_missing_glyph_box(text: str) -> bool:
     """
-    if not lines:
-        return []
-
-    # Sort lines by page number, top-to-bottom y0, then left-to-right x0
-    sorted_lines = sorted(lines, key=lambda l: (l.get("page", 1), l.get("bbox", [0,0,0,0])[1], l.get("bbox", [0,0,0,0])[0]))
-
-    merged_paragraphs = []
-    current_para = None
-
-    for line in sorted_lines:
-        txt = line.get("text", "").strip()
-        if not txt:
-            continue
-
-        bbox = line.get("bbox", [0, 0, 100, 20])
-        pg = line.get("page", 1)
-
-        if current_para is None:
-            current_para = dict(line)
-            current_para["bbox"] = list(bbox)
-            current_para["text"] = txt
-            continue
-
-        prev_pg = current_para.get("page", 1)
-        prev_bbox = current_para["bbox"]
-        prev_h = max(10.0, prev_bbox[3] - prev_bbox[1])
-        y_gap = bbox[1] - prev_bbox[3]
-
-        # Group if same page and vertical gap is less than 1.5 line height
-        if pg == prev_pg and -5 <= y_gap <= (1.8 * prev_h):
-            current_para["text"] += f" {txt}"
-            # Expand bounding box to encompass merged line
-            current_para["bbox"] = [
-                min(current_para["bbox"][0], bbox[0]),
-                min(current_para["bbox"][1], bbox[1]),
-                max(current_para["bbox"][2], bbox[2]),
-                max(current_para["bbox"][3], bbox[3])
-            ]
-            current_para["confidence"] = round(min(current_para.get("confidence", 0.9), line.get("confidence", 0.9)), 2)
-        else:
-            merged_paragraphs.append(current_para)
-            current_para = dict(line)
-            current_para["bbox"] = list(bbox)
-            current_para["text"] = txt
-
-    if current_para:
-        merged_paragraphs.append(current_para)
-
-    return merged_paragraphs
-
+    Checks if text contains missing glyph replacement boxes or invalid replacement characters.
+    Forbidden characters: ■ (U+25A0), □ (U+25A1),  (U+FFFD).
+    """
+    if not text:
+        return False
+    
+    missing_markers = {'■', '□', '\ufffd'}
+    return any(c in missing_markers for c in text)
 
 

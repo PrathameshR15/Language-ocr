@@ -35,8 +35,8 @@ class LayoutParserService:
         return cls._yolo_model
 
     @classmethod
-    def detect_visual_layout_yolo(cls, cv_img, page_num: int = 1) -> List[Dict[str, Any]]:
-        """Performs visual layout detection using DocLayout-YOLO model before OCR begins."""
+    def detect_visual_layout_yolo(cls, cv_img) -> List[Dict[str, Any]]:
+        """Performs ultra-fast visual layout detection using DocLayout-YOLO model."""
         model = cls.get_doclayout_yolo_model()
         if not model or cv_img is None:
             return []
@@ -47,50 +47,32 @@ class LayoutParserService:
             if results and len(results) > 0:
                 boxes = results[0].boxes
                 names = model.names
-                h, w = cv_img.shape[:2]
-
-                raw_list = []
                 for box in boxes:
                     xyxy = box.xyxy[0].tolist()
                     cls_id = int(box.cls[0].item())
                     conf = float(box.conf[0].item())
                     class_name = names.get(cls_id, "paragraph").lower()
 
-                    region_type = "paragraph"
-                    if "title" in class_name: region_type = "title"
-                    elif "head" in class_name: region_type = "heading"
-                    elif "table" in class_name: region_type = "table"
-                    elif "header" in class_name: region_type = "header"
-                    elif "footer" in class_name: region_type = "footer"
-                    elif "signature" in class_name or "sign" in class_name: region_type = "signature"
-                    elif "logo" in class_name: region_type = "logo"
-                    elif "stamp" in class_name or "seal" in class_name: region_type = "stamp"
-                    elif "caption" in class_name: region_type = "caption"
-                    elif "side" in class_name or "note" in class_name: region_type = "side_note"
-                    elif "watermark" in class_name: region_type = "watermark"
-                    elif "column" in class_name: region_type = "multi_column"
-                    elif "figure" in class_name or "image" in class_name: region_type = "image"
-                    elif "list" in class_name: region_type = "numbered_list"
+                    layout_type = "paragraph"
+                    if "title" in class_name: layout_type = "title"
+                    elif "head" in class_name: layout_type = "heading"
+                    elif "table" in class_name: layout_type = "table"
+                    elif "header" in class_name: layout_type = "header"
+                    elif "footer" in class_name: layout_type = "footer"
+                    elif "signature" in class_name or "sign" in class_name: layout_type = "signature"
+                    elif "stamp" in class_name or "seal" in class_name: layout_type = "stamp"
+                    elif "figure" in class_name or "image" in class_name: layout_type = "image"
+                    elif "list" in class_name: layout_type = "numbered_list"
 
-                    raw_list.append({
-                        "region_type": region_type,
-                        "layout_type": region_type,
+                    detections.append({
+                        "layout_type": layout_type,
                         "bbox": [float(xyxy[0]), float(xyxy[1]), float(xyxy[2]), float(xyxy[3])],
-                        "confidence": round(conf, 2),
-                        "page": page_num
+                        "confidence": round(conf, 2)
                     })
-
-                # Assign structural reading order (top-to-bottom, left-to-right columns)
-                raw_list.sort(key=lambda d: (d["bbox"][1] // 30, d["bbox"][0]))
-                for order_idx, det in enumerate(raw_list, start=1):
-                    det["reading_order"] = order_idx
-                    detections.append(det)
-
         except Exception as e:
             logger.warning(f"DocLayout-YOLO visual detection error: {e}")
 
         return detections
-
 
     @classmethod
     def detect_table_transformer_layout(cls, pil_img) -> List[Dict[str, Any]]:

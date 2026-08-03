@@ -230,36 +230,8 @@ class TableTransformerService:
                         cols.append({"bbox": [xc - 30, ty0, xc + 30, ty1]})
                         last_x = xc
 
-            # Build 2D Grid & Detailed Cell Metadata Objects
-            num_r = max(1, len(rows))
-            num_c = max(1, len(cols))
-            grid = [["" for _ in range(num_c)] for _ in range(num_r)]
-            cell_details = []
-
-            for r_idx in range(num_r):
-                r_box = rows[r_idx]["bbox"] if r_idx < len(rows) else [tx0, ty0, tx1, ty1]
-                ry0, ry1 = r_box[1], r_box[3]
-                for c_idx in range(num_c):
-                    c_box = cols[c_idx]["bbox"] if c_idx < len(cols) else [tx0, ty0, tx1, ty1]
-                    cx0, cx1 = c_box[0], c_box[2]
-                    
-                    cell_bbox = [
-                        max(tx0, cx0),
-                        max(ty0, ry0),
-                        min(tx1, cx1),
-                        min(ty1, ry1)
-                    ]
-                    
-                    cell_details.append({
-                        "table_id": idx,
-                        "row": r_idx,
-                        "column": c_idx,
-                        "bbox": cell_bbox,
-                        "alignment": "center" if (c_idx == 0 or r_idx == 0) else "left",
-                        "font_size": 9.0 if r_idx == 0 else 8.5,
-                        "border_info": {"top": True, "bottom": True, "left": True, "right": True},
-                        "merge_info": {"is_merged": False, "rowspan": 1, "colspan": 1}
-                    })
+            # Build 2D Grid
+            grid = [["" for _ in range(max(1, len(cols)))] for _ in range(max(1, len(rows)))]
 
             for block in tbl_ocr_words:
                 bx0, by0, bx1, by1 = block.get("bbox", [0, 0, 0, 0])
@@ -291,10 +263,6 @@ class TableTransformerService:
                 else:
                     grid[best_r][best_c] = new_text
 
-            # Update text content inside cell_details
-            for cd in cell_details:
-                cd["text"] = grid[cd["row"]][cd["column"]]
-
             # Generate Markdown table
             md_lines = []
             if grid:
@@ -318,13 +286,11 @@ class TableTransformerService:
                 "bbox": [tx0, ty0, tx1, ty1],
                 "confidence": tbl["score"],
                 "grid": grid,
-                "cell_details": cell_details,
                 "markdown": markdown_table,
                 "html": html_table
             })
 
         return reconstructed_results
-
 
 
 table_transformer_service = TableTransformerService()
