@@ -88,6 +88,11 @@ INDIC_ADMIN_DICTIONARY = {
     "सुविधा उपलब्ध कराना": "Providing facility",
     "उपलब्ध करून देणे": "Providing / making available",
     "उपलब्ध कराना": "Providing / making available",
+    "तळेघर": "Taleghar",
+    "मौजे तळेघर": "Village Taleghar",
+    "ग्रामपंचायत तळेघर": "Gram Panchayat Taleghar",
+    "तळेघर,": "Taleghar,",
+    "तळेघर.": "Taleghar.",
 }
 
 PHRASE_NORMALIZATION = {
@@ -569,6 +574,10 @@ class TranslationService:
         cleaned = re.sub(r'\bsrtichhai\b|\bsirtichhai\b|\bsirtichai\b|\bsertichai\b', 'irrigation', cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r'\buzart\b|\buzar\b', 'energy', cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r'\bbachati\b|\bbachati\b', 'savings', cleaned, flags=re.IGNORECASE)
+
+        # Fix literal translation of proper place names (e.g. तळेघर -> Taleghar instead of "basement house")
+        cleaned = re.sub(r'\bbasement house\b', 'Taleghar', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bcellar house\b', 'Taleghar', cleaned, flags=re.IGNORECASE)
 
         return cleaned
 

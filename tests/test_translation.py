@@ -92,5 +92,11 @@ class TestUniversalTranslationService(unittest.TestCase):
         self.assertIn("nabard", res.lower())
         self.assertIn("irrigation", res.lower())
 
+    def test_taleghar_proper_noun_translation(self):
+        place_input = "ग्रामपंचायत तळेघर"
+        res = translation_engine.translate_paragraph(place_input, "Marathi")
+        self.assertNotIn("basement", res.lower())
+        self.assertIn("taleghar", res.lower())
+
 if __name__ == "__main__":
     unittest.main()
