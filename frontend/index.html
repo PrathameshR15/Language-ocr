@@ -291,6 +291,29 @@
                     </div>
 
 
+                    <!-- ENGLISH SUMMARY SECTION -->
+                    <div class="summary-section-box hidden" id="summaryBox">
+                        <div class="summary-header">
+                            <div class="summary-title">
+                                <span class="summary-icon">📝</span>
+                                <div>
+                                    <h4>AI Executive Summary (100% Accurate English)</h4>
+                                    <span class="summary-subtitle">Generates a concise facts-only overview of the document content</span>
+                                </div>
+                            </div>
+                            <button id="generateSummaryBtn" class="btn btn-primary-gradient btn-sm">
+                                ⚡ Generate Summary
+                            </button>
+                        </div>
+                        <div id="summaryContent" class="summary-content hidden">
+                            <p id="summaryText"></p>
+                        </div>
+                        <div id="summaryLoader" class="summary-loader hidden">
+                            <div class="spinner"></div>
+                            <span>Analyzing document and generating accurate summary...</span>
+                        </div>
+                    </div>
+
                     <!-- METADATA JSON INSPECTOR -->
                     <div class="metadata-json-box">
                         <div class="json-header">

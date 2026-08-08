@@ -33,6 +33,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const originalTextPanel = document.getElementById('originalTextPanel');
     const translatedTextPanel = document.getElementById('translatedTextPanel');
     const jsonViewer = document.getElementById('jsonViewer');
+    
+    // Summary Elements
+    const summaryBox = document.getElementById('summaryBox');
+    const generateSummaryBtn = document.getElementById('generateSummaryBtn');
+    const summaryContent = document.getElementById('summaryContent');
+    const summaryText = document.getElementById('summaryText');
+    const summaryLoader = document.getElementById('summaryLoader');
 
     const viewPdfCalloutBtn = document.getElementById('viewPdfCalloutBtn');
 
@@ -316,6 +323,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const doc = await res.json();
             currentDocData = doc;
             const meta = doc.metadata_json || {};
+
+            if (summaryBox) {
+                summaryBox.classList.remove('hidden');
+                summaryContent.classList.add('hidden');
+                summaryLoader.classList.add('hidden');
+                summaryText.innerText = '';
+            }
 
             viewerPlaceholder.classList.add('hidden');
             viewerContent.classList.remove('hidden');
@@ -646,6 +660,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if (exportExcelBtn) {
         exportExcelBtn.addEventListener('click', () => {
             window.location.href = '/api/v1/export/excel';
+        });
+    }
+
+    // Generate Summary Event Handler
+    if (generateSummaryBtn) {
+        generateSummaryBtn.addEventListener('click', async () => {
+            if (!selectedDocId) return;
+            generateSummaryBtn.disabled = true;
+            summaryLoader.classList.remove('hidden');
+            summaryContent.classList.add('hidden');
+            try {
+                const res = await fetch(`/api/v1/document/${selectedDocId}/summary`);
+                if (res.ok) {
+                    const data = await res.json();
+                    summaryText.innerText = data.summary || 'Failed to generate summary.';
+                    summaryContent.classList.remove('hidden');
+                } else {
+                    summaryText.innerText = 'Failed to generate summary from server.';
+                    summaryContent.classList.remove('hidden');
+                }
+            } catch (err) {
+                console.error('Error generating summary:', err);
+                summaryText.innerText = 'Error connecting to summarization service.';
+                summaryContent.classList.remove('hidden');
+            } finally {
+                summaryLoader.classList.add('hidden');
+                generateSummaryBtn.disabled = false;
+            }
         });
     }
 });
