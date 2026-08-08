@@ -66,3 +66,5 @@ if __name__ == "__main__":
         reload_dirs=reload_dirs
     )
 
+# Live server reloaded with enhanced CMAP font artifact classifier.
+

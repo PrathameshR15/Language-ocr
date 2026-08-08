@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+# pyrefly: ignore [missing-import]
 from PIL import Image, ImageDraw, ImageFont
 from backend.services.table_transformer_service import table_transformer_service
 

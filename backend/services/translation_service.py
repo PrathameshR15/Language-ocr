@@ -1,6 +1,7 @@
 import os
 import re
 import unicodedata
+import json
 from typing import List, Dict, Any, Optional, Tuple
 
 from config import settings
@@ -11,6 +12,34 @@ from backend.utils.unicode_utils import (
     restore_symbols_after_translation,
     clean_unrestored_placeholders
 )
+
+PROPER_NOUN_ENTITY_MAP = {
+    "Rekha Vadekar": "Rekha Wadekar",
+    "Pumpery": "Pimpri"
+}
+
+def load_custom_dictionary():
+    dict_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "custom_dictionary.json")
+    if not os.path.exists(dict_path):
+        dict_path = "data/custom_dictionary.json"
+    if os.path.exists(dict_path):
+        try:
+            with open(dict_path, "r", encoding="utf-8") as f:
+                custom_dict = json.load(f)
+            
+            # Load proper nouns
+            proper_nouns = custom_dict.get("proper_nouns", {})
+            for k, v in proper_nouns.items():
+                INDIC_ADMIN_DICTIONARY[k] = v
+            
+            # Load admin terms
+            admin_terms = custom_dict.get("admin_terms", {})
+            for k, v in admin_terms.items():
+                INDIC_ADMIN_DICTIONARY[k] = v
+                
+            logger.info(f"Loaded {len(proper_nouns)} proper nouns and {len(admin_terms)} admin terms from custom_dictionary.json")
+        except Exception as e:
+            logger.error(f"Error loading custom_dictionary.json: {e}")
 
 # Indic Administrative Terms Dictionary for exact table cell / heading translation
 INDIC_ADMIN_DICTIONARY = {
@@ -93,6 +122,14 @@ INDIC_ADMIN_DICTIONARY = {
     "ग्रामपंचायत तळेघर": "Gram Panchayat Taleghar",
     "तळेघर,": "Taleghar,",
     "तळेघर.": "Taleghar.",
+    # Bengali Administrative Terms
+    "সহ-সচিব": "Deputy Secretary",
+    "জেলা পরিষদ": "Zilla Parishad",
+    "পঞ্চায়েত সমিতি": "Panchayat Samiti",
+    "প্রাথমিক স্বাস্থ্য কেন্দ্র": "Primary Health Center",
+    "গ্রাম উন্নয়ন কাজ - সংক্ষিপ্ত প্রতিবেদন": "Village Development Work - Brief Report",
+    "বিদ্যালয় মেরামত": "School repair",
+    "विद्यालय मरम्मत": "School repair",
 }
 
 PHRASE_NORMALIZATION = {
@@ -328,6 +365,13 @@ def clean_ocr_text(text: str) -> str:
 
     # Fix common OCR typos on Devanagari administrative words
     cleaned = (cleaned
+               # Bengali OCR font noise, CMAP corruption, and spelling corrections
+               .replace("বাংলোয়", "বাংলায়")
+               .replace("বাংলোয়", "বাংলায়")
+               .replace("চানি", "চান")
+               .replace("প্রতבדিনিটি", "প্রতিবেদনটি")
+               .replace("দিওয়া", "দেওয়া")
+               .replace("হলো", "হলো")
                .replace("ऊजार्ट", "ऊर्जा")
                .replace("बचति", "बचत")
                .replace("नबार्टधि", "नाबार्ड")
@@ -364,7 +408,22 @@ def clean_ocr_text(text: str) -> str:
                .replace("मंजिूर", "मंजूर")
                .replace("मार्गदिशिर्षान", "मार्गदर्शन")
                .replace("ज्ञानविधर्धिनी", "ज्ञानवर्धिनी")
+               .replace("न9न", "नवीन")
+               .replace("जिलह्", "जिल्हा")
+               .replace("इमरिित", "इमारत")
+               .replace("उत्तरिाभिमुख", "उत्तराभिमुख")
+               .replace("पशम्चि", "पश्चिम")
+               .replace("बाजिूची", "बाजूची")
+               .replace("पूणर्या", "पूर्ण")
+               .replace("पग्रत", "प्रगति")
+               .replace("पग्रती", "प्रगती")
+               .replace("পগ্রত", "প্রগতি")
+               .replace("পগ্রতী", "প্রগতি")
                .replace("वार्धिक", "वार्षिक"))
+
+    # Word boundary corrections for Bengali
+    cleaned = re.sub(r"\b\u09a4\u09ac\b", "তবে", cleaned)
+    cleaned = re.sub(r"\b\u09a8\u09bf\u099a\b", "নিচে", cleaned)
 
     # Repair broken Devanagari: stray combining marks without base character
     cleaned = re.sub(r'(?<![\u0900-\u0963\u0972-\u097F])[\u093E-\u094D\u0962\u0963]', '', cleaned)
@@ -379,11 +438,11 @@ def clean_ocr_text(text: str) -> str:
 
 
 def extract_number_prefix(text: str):
-    """Extracts leading number/bullet prefix (e.g. '1.', '१.', '(a)', '1)') and returns (prefix_str, body_text)."""
+    """Extracts leading number/bullet prefix (e.g. '1.', '१.', '১.', '(a)', '1)') and returns (prefix_str, body_text)."""
     if not text:
         return "", text
     text_stripped = text.strip()
-    match = re.match(r'^(?P<prefix>(?:[0-9\u0966-\u096F]+|\([0-9\u0966-\u096F]+\)|[a-zA-Z]\))[\.\)\:\-]?\s*)(?P<body>.*)$', text_stripped)
+    match = re.match(r'^(?P<prefix>(?:[0-9\u0966-\u096F\u09E6-\u09EF]+|\([0-9\u0966-\u096F\u09E6-\u09EF]+\)|[a-zA-Z]\))[\.\)\:\-]?\s*)(?P<body>.*)$', text_stripped)
     if match:
         p_raw = match.group('prefix')
         body = match.group('body')
@@ -402,10 +461,11 @@ def find_proverb_meaning(text: str) -> Optional[str]:
     if cleaned in MARATHI_IDIOM_GLOSSARY:
         return MARATHI_IDIOM_GLOSSARY[cleaned]
 
-    # 2. Substring match
-    for idiom, meaning in MARATHI_IDIOM_GLOSSARY.items():
-        if idiom in cleaned or cleaned in idiom:
-            return meaning
+    # 2. Substring match (only if length is at least 10)
+    if len(cleaned) >= 10:
+        for idiom, meaning in MARATHI_IDIOM_GLOSSARY.items():
+            if idiom in cleaned or cleaned in idiom:
+                return meaning
             
     return None
 
@@ -419,7 +479,8 @@ class TranslationService:
     def clear_cache(cls):
         """Clears in-memory translation cache to guarantee fresh translation of new document uploads."""
         cls._cache.clear()
-        logger.info("Cleared translation in-memory cache.")
+        load_custom_dictionary()
+        logger.info("Cleared translation in-memory cache and reloaded custom dictionary.")
 
     gtx_disabled_until: float = 0.0
     _indictrans_model = None
@@ -444,6 +505,7 @@ class TranslationService:
         if not text or not text.strip():
             return text
         try:
+            # pyrefly: ignore [missing-import]
             from deep_translator import GoogleTranslator
             lang_code_map = {
                 "Marathi": "mr", "Hindi": "hi", "Bengali": "bn", "Gujarati": "gu",
@@ -545,6 +607,24 @@ class TranslationService:
         final_res = cls.normalize_result(restored_translation)
         final_res = clean_unrestored_placeholders(final_res)
 
+        # Step 5: English Output Validation & Grammar Correction
+        try:
+            from backend.services.llm_enhancement_service import llm_service
+            if llm_service.is_available():
+                final_res = llm_service.correct_english_translation(final_res)
+        except Exception as e:
+            logger.warning(f"English translation validation failed: {e}")
+
+        # Post-translation overrides and quality fixes
+        # 1. Enforce progress vs salary rule (Rule 1)
+        progress_keywords = ["प्रगति", "प्रगती", "पग्रत", "पग्रती", "पग्रɟत", "পগ্রত", "পগ্রতী", "প্রগতি"]
+        if any(kw in text or kw in clean_text for kw in progress_keywords):
+            final_res = re.sub(r'\bsalary\b', 'Progress', final_res, flags=re.IGNORECASE)
+
+        # 2. Maintain proper noun and place name mappings (Rule 5)
+        for key, val in PROPER_NOUN_ENTITY_MAP.items():
+            final_res = re.sub(r'\b' + re.escape(key) + r'\b', val, final_res, flags=re.IGNORECASE)
+
         full_result = f"{prefix}{final_res}" if prefix and not final_res.startswith(prefix.strip()) else final_res
         cls._cache[cache_key] = full_result
         return full_result
@@ -579,7 +659,13 @@ class TranslationService:
         cleaned = re.sub(r'\bbasement house\b', 'Taleghar', cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r'\bcellar house\b', 'Taleghar', cleaned, flags=re.IGNORECASE)
 
+        # Clean leftover box glyphs and IPA layout symbols (local fallback if LLM is offline)
+        cleaned = re.sub(r'[■□ǂǃ]', '', cleaned)
+        cleaned = re.sub(r'\b[734]\s*([a-zA-Z])', r'\1', cleaned)
+        cleaned = re.sub(r'=', '', cleaned)
+
         return cleaned
 
 
 translation_engine = TranslationService()
+load_custom_dictionary()

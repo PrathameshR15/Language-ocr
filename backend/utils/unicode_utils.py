@@ -161,7 +161,7 @@ def restore_symbols_after_translation(translated_text: str, symbol_map: Dict[str
 
 
 def normalize_indic_digits(text: str) -> str:
-    """Converts Indic digits (०-९) to ASCII digits (0-9), standardizes currency symbols (₹ → Rs. ), and removes black boxes."""
+    """Converts Indic digits (०-९ and ০-৯) to ASCII digits (0-9), standardizes currency symbols (₹ → Rs. ), and removes black boxes."""
     if not text:
         return text
     
@@ -172,6 +172,11 @@ def normalize_indic_digits(text: str) -> str:
     # Convert Devanagari digits ०-९ to ASCII digits 0-9
     digit_map = {'०': '0', '१': '1', '२': '2', '३': '3', '४': '4', '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'}
     for d_indic, d_ascii in digit_map.items():
+        res = res.replace(d_indic, d_ascii)
+        
+    # Convert Bengali digits ০-৯ to ASCII digits 0-9
+    bengali_digit_map = {'০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4', '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'}
+    for d_indic, d_ascii in bengali_digit_map.items():
         res = res.replace(d_indic, d_ascii)
         
     # Clean up double Rs. Rs.

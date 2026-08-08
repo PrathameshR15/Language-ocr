@@ -1,5 +1,6 @@
 import re
 import numpy as np
+# pyrefly: ignore [missing-import]
 from PIL import Image
 from typing import List, Dict, Any, Tuple
 from backend.services.preprocessing_service import ImagePreprocessingService
@@ -16,6 +17,7 @@ def _ensure_fitz():
     global fitz
     if fitz is None:
         try:
+            # pyrefly: ignore [missing-import]
             import fitz as _fitz
             fitz = _fitz
         except ImportError:
@@ -26,6 +28,7 @@ def _ensure_easyocr():
     global easyocr
     if easyocr is None:
         try:
+            # pyrefly: ignore [missing-import]
             import easyocr as _easyocr
             easyocr = _easyocr
         except ImportError:
@@ -36,16 +39,54 @@ def _ensure_paddleocr():
     global PaddleOCR
     if PaddleOCR is None:
         try:
+            # pyrefly: ignore [missing-import]
             from paddleocr import PaddleOCR as _PaddleOCR
             PaddleOCR = _PaddleOCR
         except ImportError:
             pass
     return PaddleOCR
 
+# Tesseract OCR lazy loading handles
+pytesseract = None
+
+def _ensure_tesseract():
+    global pytesseract
+    if pytesseract is None:
+        try:
+            # pyrefly: ignore [missing-import]
+            import pytesseract as _pytesseract
+            from config import settings
+            _pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_PATH
+            pytesseract = _pytesseract
+            logger.info("pytesseract engine initialized successfully.")
+        except ImportError:
+            pass
+    return pytesseract
+
+# Surya OCR lazy loading handles
+surya_rec_predictor = None
+surya_initialized = None
+
+def _ensure_surya():
+    global surya_rec_predictor, surya_initialized
+    if surya_initialized is None:
+        try:
+            # pyrefly: ignore [missing-import]
+            from surya.recognition import RecognitionPredictor
+            logger.info("Initializing Surya OCR RecognitionPredictor...")
+            surya_rec_predictor = RecognitionPredictor()
+            surya_initialized = True
+            logger.info("Surya OCR RecognitionPredictor loaded successfully.")
+        except Exception as e:
+            logger.warning(f"Could not load Surya OCR engine/models: {e}")
+            surya_initialized = False
+    return surya_initialized
+
 def _ensure_rapidocr():
     global RapidOCR
     if RapidOCR is None:
         try:
+            # pyrefly: ignore [missing-import]
             from rapidocr_onnxruntime import RapidOCR as _RapidOCR
             RapidOCR = _RapidOCR
         except ImportError:
@@ -108,17 +149,17 @@ class OCRService:
 
 
     def get_easyocr_reader(self):
-        """Lazy-loads EasyOCR reader with Devanagari (Hindi, Marathi) & English models with verbose=False for Windows compatibility."""
+        """Lazy-loads EasyOCR reader with Devanagari (Hindi, Marathi, Bengali) & English models with verbose=False for Windows compatibility."""
         _easyocr = _ensure_easyocr()
         if self._easyocr_reader is None and _easyocr is not None:
-            for langs in [['hi', 'mr', 'en'], ['mr', 'en'], ['hi', 'en']]:
+            for langs in [['bn', 'hi', 'mr', 'en'], ['bn', 'en'], ['hi', 'mr', 'en'], ['mr', 'en'], ['hi', 'en']]:
                 try:
                     logger.info(f"Initializing EasyOCR reader for Indic models {langs}...")
                     self._easyocr_reader = _easyocr.Reader(langs, gpu=False, verbose=False)
                     logger.info(f"EasyOCR Indic reader loaded successfully ({langs}).")
                     break
                 except Exception as e:
-                    logger.warning(f"EasyOCR init failed for {langs}: {e}")
+                    logger.warning(f"EasyOCR reader init failed for {langs}: {e}")
                     self._easyocr_reader = None
         return self._easyocr_reader
 
@@ -172,6 +213,17 @@ class OCRService:
 
         if any(c in total_text for c in ['■', '□', '\ufffd']):
             return False, "OCR text contains missing glyph boxes"
+
+        # Check for split matra digit corruptions or box characters inside Indic text
+        words = total_text.split()
+        if words:
+            corrupt_count = 0
+            for w in words:
+                # e.g., starts with 7, 3, 4 followed by Indic char (like 7বদু্যৎ), or contains ǂ, ǃ, or =
+                if re.search(r'^[734\u096D\u096A][\u0900-\u0DFF]', w) or any(c in w for c in ['ǂ', 'ǃ', '=']):
+                    corrupt_count += 1
+            if corrupt_count / len(words) > 0.05: # If more than 5% of words are corrupted
+                return False, "OCR text contains split glyph symbols (CMap corruption)"
 
         if self.is_garbled_ascii(paragraphs):
             return False, "OCR text contains garbled ASCII noise"
@@ -344,11 +396,21 @@ class OCRService:
                             t_bbox = list(tab.bbox)
                             raw_grid = tab.extract()
                             clean_grid = []
+                            cell_bboxes = []
                             if raw_grid:
-                                for row in raw_grid:
+                                for r_idx, row in enumerate(raw_grid):
                                     clean_row = [sanitize_indic_text(str(cell or "")) for cell in row]
                                     if any(clean_row):
                                         clean_grid.append(clean_row)
+                                        row_bboxes = []
+                                        if hasattr(tab, "cells") and tab.cells:
+                                            for c_idx in range(len(row)):
+                                                cell_idx = c_idx * tab.row_count + r_idx
+                                                cell_bbox = tab.cells[cell_idx] if cell_idx < len(tab.cells) else None
+                                                row_bboxes.append(list(cell_bbox) if cell_bbox else None)
+                                        else:
+                                            row_bboxes = [None] * len(row)
+                                        cell_bboxes.append(row_bboxes)
 
                             if clean_grid:
                                 has_digital_text = True
@@ -358,6 +420,7 @@ class OCRService:
                                     "page": page_num,
                                     "text": "[TABLE GRID]",
                                     "table_grid": clean_grid,
+                                    "table_cell_bboxes": cell_bboxes,
                                     "confidence": 1.00,
                                     "bbox": t_bbox,
                                     "block_type": "table",
@@ -641,8 +704,270 @@ class OCRService:
             logger.error(f"PaddleOCR processing failed on page {page_num}: {e}")
             return [], 0.0
 
+    def process_image_surya(self, pil_image: Image.Image, page_num: int = 1, langs: List[str] = None) -> Tuple[List[Dict[str, Any]], float]:
+        """Performs OCR extraction using Surya OCR model."""
+        is_ready = _ensure_surya()
+        if not is_ready:
+            return [], 0.0
+
+        try:
+            w, h = pil_image.size
+            lang_list = [langs] if langs else [["bn", "hi", "mr", "en"]]
+
+            surya_det_predictor = None
+            predictions = surya_rec_predictor(
+                images=[pil_image],
+                langs=lang_list,
+                det_predictor=surya_det_predictor
+            )
+
+            if not predictions or not hasattr(predictions[0], "text_lines") or not predictions[0].text_lines:
+                return [], 0.0
+
+            page_result = predictions[0]
+            page_w, page_h = w, h
+            paragraphs = []
+            confidences = []
+            para_idx = 1
+
+            # Sort lines top-to-bottom
+            lines = sorted(page_result.text_lines, key=lambda l: (getattr(l, "bbox", [0,0,0,0])[1], getattr(l, "bbox", [0,0,0,0])[0]))
+
+            current_para_texts = []
+            current_confidences = []
+            current_boxes = []
+            last_bbox = None
+
+            for line in lines:
+                text = sanitize_indic_text(getattr(line, "text", ""))
+                if not text or len(text) < 2:
+                    continue
+
+                bbox = list(getattr(line, "bbox", [0, 0, 0, 0]))
+                score = getattr(line, "confidence", None)
+                if score is None:
+                    score = getattr(line, "score", 0.90)
+                score_val = float(score) if score else 0.90
+
+                split_block = False
+                if last_bbox:
+                    gap = bbox[1] - last_bbox[3]
+                    line_h = bbox[3] - bbox[1]
+                    if gap > max(12.0, line_h * 1.15) or abs(bbox[0] - last_bbox[0]) > 40:
+                        split_block = True
+
+                if split_block and current_para_texts:
+                    full_text = " ".join(current_para_texts)
+                    avg_conf = sum(current_confidences) / len(current_confidences)
+                    b_min_x = min(b[0] for b in current_boxes)
+                    b_min_y = min(b[1] for b in current_boxes)
+                    b_max_x = max(b[2] for b in current_boxes)
+                    b_max_y = max(b[3] for b in current_boxes)
+                    comb_bbox = [float(b_min_x), float(b_min_y), float(b_max_x), float(b_max_y)]
+
+                    b_type, props = layout_parser.classify_block_type(full_text, comb_bbox, page_w, page_h)
+
+                    paragraphs.append({
+                        "paragraph": para_idx,
+                        "page": page_num,
+                        "text": full_text,
+                        "confidence": round(avg_conf, 2),
+                        "bbox": comb_bbox,
+                        "block_type": b_type,
+                        "alignment": props["align"],
+                        "bold": props["bold"],
+                        "font_size": props["font_size"],
+                        "is_list": props["is_list"],
+                        "list_prefix": props["list_prefix"],
+                        "page_width": page_w,
+                        "page_height": page_h,
+                        "source": "surya"
+                    })
+                    para_idx += 1
+                    current_para_texts = []
+                    current_confidences = []
+                    current_boxes = []
+
+                current_para_texts.append(text)
+                current_confidences.append(score_val)
+                current_boxes.append(bbox)
+                confidences.append(score_val)
+                last_bbox = bbox
+
+            if current_para_texts:
+                full_text = " ".join(current_para_texts)
+                avg_conf = sum(current_confidences) / len(current_confidences)
+                b_min_x = min(b[0] for b in current_boxes)
+                b_min_y = min(b[1] for b in current_boxes)
+                b_max_x = max(b[2] for b in current_boxes)
+                b_max_y = max(b[3] for b in current_boxes)
+                comb_bbox = [float(b_min_x), float(b_min_y), float(b_max_x), float(b_max_y)]
+
+                b_type, props = layout_parser.classify_block_type(full_text, comb_bbox, page_w, page_h)
+
+                paragraphs.append({
+                    "paragraph": para_idx,
+                    "page": page_num,
+                    "text": full_text,
+                    "confidence": round(avg_conf, 2),
+                    "bbox": comb_bbox,
+                    "block_type": b_type,
+                    "alignment": props["align"],
+                    "bold": props["bold"],
+                    "font_size": props["font_size"],
+                    "is_list": props["is_list"],
+                    "list_prefix": props["list_prefix"],
+                    "page_width": page_w,
+                    "page_height": page_h,
+                    "source": "surya"
+                })
+
+            avg_conf = round(sum(confidences) / len(confidences), 2) if confidences else 0.90
+            logger.info(f"Surya OCR page {page_num} extracted {len(paragraphs)} paragraphs (Avg Conf: {avg_conf})")
+            return paragraphs, avg_conf
+
+        except Exception as e:
+            logger.error(f"Surya OCR processing failed on page {page_num}: {e}")
+            return [], 0.0
+
+    def detect_languages_for_tesseract(self, pil_image: Image.Image, tessdata_dir: str) -> str:
+        """Detects primary language script in image using a fast pre-pass to prevent multi-script confusion."""
+        pytess = _ensure_tesseract()
+        if not pytess:
+            return "eng"
+        try:
+            import os
+            # Set TESSDATA_PREFIX environment variable so Tesseract can resolve paths containing spaces on Windows
+            abs_tessdata_dir = os.path.abspath(tessdata_dir)
+            os.environ["TESSDATA_PREFIX"] = abs_tessdata_dir
+            w, h = pil_image.size
+            small_img = pil_image.resize((w // 2, h // 2))
+            custom_config = '--psm 3'
+            sample_text = pytess.image_to_string(small_img, lang="ben+hin+mar+eng", config=custom_config)
+            
+            bengali_chars = len(re.findall(r'[\u0980-\u09FF]', sample_text))
+            devanagari_chars = len(re.findall(r'[\u0900-\u097F]', sample_text))
+            
+            if bengali_chars > 5 and bengali_chars > devanagari_chars:
+                logger.info(f"[TESSERACT LANG DETECT] Detected primary script: BENGALI ({bengali_chars} chars)")
+                return "ben+eng"
+            elif devanagari_chars > 5:
+                logger.info(f"[TESSERACT LANG DETECT] Detected primary script: DEVANAGARI ({devanagari_chars} chars)")
+                return "mar+hin+eng"
+        except Exception as e:
+            logger.warning(f"Tesseract language pre-detection failed: {e}")
+        return "ben+hin+mar+eng"
+
+    def process_image_tesseract(self, pil_image: Image.Image, page_num: int = 1) -> Tuple[List[Dict[str, Any]], float]:
+        """Performs OCR extraction using Tesseract OCR with local traineddata models."""
+        pytess = _ensure_tesseract()
+        if not pytess:
+            return [], 0.0
+
+        try:
+            import os
+            from config import settings
+            w, h = pil_image.size
+
+            # Set TESSDATA_PREFIX environment variable so Tesseract can resolve paths containing spaces on Windows
+            abs_tessdata_dir = os.path.abspath(settings.TESSERACT_DATA_DIR)
+            os.environ["TESSDATA_PREFIX"] = abs_tessdata_dir
+            
+            # Detect primary language script to improve accuracy
+            target_langs = self.detect_languages_for_tesseract(pil_image, abs_tessdata_dir)
+
+            # Request word-level bounding boxes and confidence scores
+            data = pytess.image_to_data(
+                pil_image,
+                lang=target_langs,
+                output_type=pytess.Output.DICT
+            )
+
+            paragraphs = []
+            confidences = []
+
+            # Group words by block_num and par_num
+            groups = {}
+            n_items = len(data.get("text", []))
+
+            for i in range(n_items):
+                text = str(data["text"][i]).strip()
+                conf = float(data["conf"][i]) if "conf" in data else -1.0
+
+                # Skip layout background or unconfident empty spaces
+                if not text or conf == -1.0 or conf < 10.0:
+                    continue
+
+                block_num = data["block_num"][i]
+                par_num = data["par_num"][i]
+                key = (block_num, par_num)
+
+                if key not in groups:
+                    groups[key] = {
+                        "words": [],
+                        "confidences": [],
+                        "boxes": []
+                    }
+
+                left = float(data["left"][i])
+                top = float(data["top"][i])
+                width = float(data["width"][i])
+                height = float(data["height"][i])
+                box = [left, top, left + width, top + height]
+
+                groups[key]["words"].append(text)
+                groups[key]["confidences"].append(conf / 100.0) # Convert 0-100 to 0.0-1.0
+                groups[key]["boxes"].append(box)
+                confidences.append(conf / 100.0)
+
+            para_idx = 1
+            for (block_num, par_num), grp in sorted(groups.items(), key=lambda x: (x[0][0], x[0][1])):
+                full_text = " ".join(grp["words"])
+                clean_t = sanitize_indic_text(full_text)
+                if not clean_t or len(clean_t) < 2:
+                    continue
+
+                avg_conf = sum(grp["confidences"]) / len(grp["confidences"])
+
+                b_min_x = min(box[0] for box in grp["boxes"])
+                b_min_y = min(box[1] for box in grp["boxes"])
+                b_max_x = max(box[2] for box in grp["boxes"])
+                b_max_y = max(box[3] for box in grp["boxes"])
+                comb_bbox = [b_min_x, b_min_y, b_max_x, b_max_y]
+
+                b_type, props = layout_parser.classify_block_type(clean_t, comb_bbox, w, h)
+
+                paragraphs.append({
+                    "paragraph": para_idx,
+                    "page": page_num,
+                    "text": clean_t,
+                    "confidence": round(avg_conf, 2),
+                    "bbox": comb_bbox,
+                    "block_type": b_type,
+                    "alignment": props["align"],
+                    "bold": props["bold"],
+                    "font_size": props["font_size"],
+                    "is_list": props["is_list"],
+                    "list_prefix": props["list_prefix"],
+                    "page_width": w,
+                    "page_height": h,
+                    "source": "tesseract"
+                })
+                para_idx += 1
+
+            avg_conf = round(sum(confidences) / len(confidences), 2) if confidences else 0.90
+            logger.info(f"Tesseract OCR page {page_num} extracted {len(paragraphs)} paragraphs (Avg Conf: {avg_conf})")
+            return paragraphs, avg_conf
+
+        except Exception as e:
+            logger.error(f"Tesseract OCR processing failed on page {page_num}: {e}")
+            return [], 0.0
+
     def process_image(self, pil_image: Image.Image, page_num: int = 1) -> Tuple[List[Dict[str, Any]], float]:
-        """Runs image preprocessing, performs OCR extraction, validates output quality, and merges sentence fragments."""
+        """Runs image preprocessing, performs OCR extraction using primary configured engine (Tesseract/Surya/Auto) with automatic fallback."""
+        from config import settings
+        engine_mode = getattr(settings, "OCR_ENGINE", "auto").lower()
+
         w, h = pil_image.size
         if max(w, h) > 1600:
             scale = 1600.0 / float(max(w, h))
@@ -650,17 +975,45 @@ class OCRService:
             pil_image = pil_image.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
         cv_img = ImagePreprocessingService.pil_to_cv2(pil_image)
-        
+
+        # 1. Primary Engine: Tesseract OCR (when OCR_ENGINE is 'auto' or 'tesseract')
+        if engine_mode in ("auto", "tesseract"):
+            try:
+                tess_paras, tess_conf = self.process_image_tesseract(pil_image, page_num)
+                is_valid, reason = self.validate_ocr_quality(tess_paras, tess_conf)
+                if is_valid:
+                    merged_paras = self.merge_ocr_line_fragments(tess_paras)
+                    logger.info(f"[OCR ENGINE - TESSERACT] Extracted {len(merged_paras)} blocks for page {page_num} (Conf: {tess_conf})")
+                    return merged_paras, tess_conf
+                else:
+                    logger.warning(f"[OCR FALLBACK TRIGGERED] Tesseract OCR output validation failed: {reason}. Falling back...")
+            except Exception as e:
+                logger.warning(f"[OCR FALLBACK TRIGGERED] Tesseract OCR error: {e}. Falling back...")
+
+        # 2. Secondary Engine: Surya OCR (when OCR_ENGINE is 'surya')
+        if engine_mode == "surya":
+            try:
+                surya_paras, surya_conf = self.process_image_surya(pil_image, page_num)
+                is_valid, reason = self.validate_ocr_quality(surya_paras, surya_conf)
+                if is_valid:
+                    merged_paras = self.merge_ocr_line_fragments(surya_paras)
+                    logger.info(f"[OCR ENGINE - SURYA] Extracted {len(merged_paras)} blocks for page {page_num} (Conf: {surya_conf})")
+                    return merged_paras, surya_conf
+                else:
+                    logger.warning(f"[OCR FALLBACK TRIGGERED] Surya OCR output validation failed: {reason}. Falling back...")
+            except Exception as e:
+                logger.warning(f"[OCR FALLBACK TRIGGERED] Surya OCR error: {e}. Falling back...")
+
+        # 3. Secondary Engine: RapidOCR
         paragraphs = []
         confidences = []
-
-        # 1. Primary Engine: RapidOCR (ultra-fast ONNX runtime engine < 0.1s)
         _engine = self._get_rapidocr()
         if _engine:
             try:
                 results, _ = _engine(cv_img)
                 if not results:
                     # Fallback to grayscale if raw color image returned no text boxes
+                    # pyrefly: ignore [missing-import]
                     import cv2
                     gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY) if len(cv_img.shape) == 3 else cv_img
                     results, _ = _engine(gray)
@@ -723,7 +1076,18 @@ class OCRService:
             except Exception as e:
                 logger.error(f"RapidOCR processing failed on page {page_num}: {e}")
 
-        # 2. Fallback: PaddleOCR (if RapidOCR threw an exception)
+        # 3. Fallback: EasyOCR (if RapidOCR fails or throws exception)
+        _easyocr = _ensure_easyocr()
+        if _easyocr is not None:
+            try:
+                easy_paras, easy_conf = self.process_image_easyocr(cv_img, page_num)
+                if easy_paras:
+                    merged_paras = self.merge_ocr_line_fragments(easy_paras)
+                    return merged_paras, easy_conf
+            except Exception as e:
+                logger.warning(f"EasyOCR fallback processing failed: {e}")
+
+        # 4. Fallback: PaddleOCR (if previous fallbacks failed)
         _PaddleOCR = _ensure_paddleocr()
         if _PaddleOCR is not None:
             paddle_paras, paddle_conf = self.process_image_paddleocr(cv_img, page_num)

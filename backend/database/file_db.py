@@ -50,7 +50,8 @@ class FileDatabase:
     async def get_all_documents(self) -> List[Dict[str, Any]]:
         async with self._lock:
             data = self._read_data_sync()
-            return data.get("documents", [])
+            docs = data.get("documents", [])
+            return sorted(docs, key=lambda d: str(d.get("created_at", "")), reverse=True)
 
     async def get_document_by_id(self, doc_id: str) -> Optional[Dict[str, Any]]:
         async with self._lock:

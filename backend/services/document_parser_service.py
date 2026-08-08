@@ -4,8 +4,11 @@ import uuid
 import time
 import json
 import tempfile
+# pyrefly: ignore [missing-import]
 import fitz  # PyMuPDF
+# pyrefly: ignore [missing-import]
 from PIL import Image
+# pyrefly: ignore [missing-import]
 from docx import Document as DocxDocument
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List
@@ -15,10 +18,11 @@ from backend.utils.logger import logger
 from backend.utils.file_validator import sanitize_filename, validate_file_size, validate_file_extension, detect_corrupted_file
 from backend.services.ocr_service import ocr_engine
 from backend.services.language_detection_service import LanguageDetectionService
-from backend.services.translation_service import translation_engine, INDIC_ADMIN_DICTIONARY, MARATHI_IDIOM_GLOSSARY
+from backend.services.translation_service import translation_engine, INDIC_ADMIN_DICTIONARY, MARATHI_IDIOM_GLOSSARY, is_corrupted_romanized_marathi
 from backend.services.metadata_service import metadata_service
 from backend.services.pdf_generation_service import pdf_generator
 from backend.services.quality_validation_service import quality_validator
+from backend.services.llm_enhancement_service import llm_service
 from backend.database.file_db import db_client
 
 class DocumentParserService:
@@ -55,22 +59,134 @@ class DocumentParserService:
             if ext == "pdf":
                 digital_paras, is_digital = ocr_engine.extract_digital_pdf_blocks(file_bytes)
                 if is_digital:
+                    is_valid, reason = ocr_engine.validate_ocr_quality(digital_paras, avg_conf=1.00)
+                    if not is_valid:
+                        logger.warning(f"Doc {doc_id}: Selectable digital text failed quality check: {reason}. Forcing scanned PDF OCR fallback...")
+                        is_digital = False
+
+                if is_digital:
                     doc_type = "Digital PDF"
                     paragraphs = digital_paras
                     overall_confidence = 1.00
                     logger.info(f"Doc {doc_id} classified as Digital PDF. Extracted {len(paragraphs)} digital blocks (OCR bypassed).")
                 else:
                     doc_type = "Scanned PDF"
-                    logger.info(f"Doc {doc_id} identified as Scanned PDF. Processing page images with OCR...")
+                    logger.info(f"Doc {doc_id} identified as Scanned PDF/Corrupted Font CMap. Processing page images with OCR...")
+                    from backend.services.ocr_service import sanitize_indic_text, _ensure_tesseract
+                    # pyrefly: ignore [missing-import]
+                    from PIL import ImageOps, ImageDraw
+                    # pyrefly: ignore [missing-import]
+                    import pytesseract
+                    
                     pdf_doc = fitz.open(temp_input_path)
+                    
+                    # Group digital table blocks by page so we can reconstruct them
+                    digital_tables_by_page = {}
+                    if digital_paras:
+                        for p in digital_paras:
+                            if p.get("block_type") == "table" and p.get("table_grid"):
+                                pg = p.get("page", 1)
+                                digital_tables_by_page.setdefault(pg, []).append(p)
+                    
                     for page_num, page in enumerate(pdf_doc, start=1):
                         pix = page.get_pixmap(dpi=200)
                         img_path = os.path.join(tmpdir, f"temp_{doc_id}_p{page_num}.png")
                         pix.save(img_path)
                         
                         with Image.open(img_path) as pil_img:
-                            page_paras, page_conf = ocr_engine.process_image(pil_img, page_num)
-                            paragraphs.extend(page_paras)
+                            page_w = page.rect.width
+                            page_h = page.rect.height
+                            
+                            # Scale factor from PDF points to full-res image pixels
+                            img_w, img_h = pil_img.size
+                            scale_x = img_w / page_w
+                            scale_y = img_h / page_h
+                            
+                            page_tables = digital_tables_by_page.get(page_num, [])
+                            
+                            # 1. OCR table cells individually using PyMuPDF cell coordinates
+                            for tbl in page_tables:
+                                grid = tbl.get("table_grid", [])
+                                cell_bboxes = tbl.get("table_cell_bboxes", [])
+                                
+                                num_rows = len(grid)
+                                num_cols = max(len(r) for r in grid) if grid else 0
+                                new_grid = [["" for _ in range(num_cols)] for _ in range(num_rows)]
+                                
+                                # Setup tesseract env
+                                abs_tessdata_dir = os.path.abspath(settings.TESSERACT_DATA_DIR)
+                                os.environ["TESSDATA_PREFIX"] = abs_tessdata_dir
+                                
+                                tess_lang = "ben"
+                                try:
+                                    tess_lang = ocr_engine.detect_languages_for_tesseract(pil_img, abs_tessdata_dir)
+                                except Exception:
+                                    pass
+                                
+                                for r_idx in range(num_rows):
+                                    for c_idx in range(len(grid[r_idx])):
+                                        if cell_bboxes and r_idx < len(cell_bboxes) and c_idx < len(cell_bboxes[r_idx]):
+                                            c_bbox = cell_bboxes[r_idx][c_idx]
+                                            if c_bbox and len(c_bbox) == 4:
+                                                cx0 = int(c_bbox[0] * scale_x)
+                                                cy0 = int(c_bbox[1] * scale_y)
+                                                cx1 = int(c_bbox[2] * scale_x)
+                                                cy1 = int(c_bbox[3] * scale_y)
+                                                
+                                                cx0 = max(0, cx0)
+                                                cy0 = max(0, cy0)
+                                                cx1 = min(img_w, cx1)
+                                                cy1 = min(img_h, cy1)
+                                                
+                                                if cx1 > cx0 and cy1 > cy0:
+                                                    cell_img = pil_img.crop((cx0, cy0, cx1, cy1))
+                                                    cell_img = ImageOps.expand(cell_img, border=10, fill="white")
+                                                    
+                                                    cell_text = pytesseract.image_to_string(
+                                                        cell_img,
+                                                        lang=tess_lang,
+                                                        config="--psm 6"
+                                                    ).strip()
+                                                    new_grid[r_idx][c_idx] = sanitize_indic_text(cell_text)
+                                
+                                tbl["table_grid"] = new_grid
+                                paragraphs.append(tbl)
+                            
+                            # 2. Redact table regions from the main image to prevent duplicate OCR text
+                            redacted_img = pil_img.copy()
+                            draw = ImageDraw.Draw(redacted_img)
+                            for tbl in page_tables:
+                                t_bbox = tbl.get("bbox")
+                                if t_bbox and len(t_bbox) == 4:
+                                    tx0 = int(t_bbox[0] * scale_x)
+                                    ty0 = int(t_bbox[1] * scale_y)
+                                    tx1 = int(t_bbox[2] * scale_x)
+                                    ty1 = int(t_bbox[3] * scale_y)
+                                    draw.rectangle([tx0 - 5, ty0 - 5, tx1 + 5, ty1 + 5], fill="white")
+                            
+                            # 3. OCR the redacted image to get clean non-table paragraphs
+                            page_paras, page_conf = ocr_engine.process_image(redacted_img, page_num)
+                            
+                            # Determine scaling between whole-page OCR image and PDF points
+                            w, h = redacted_img.size
+                            new_w, new_h = w, h
+                            if max(w, h) > 1600:
+                                scale = 1600.0 / float(max(w, h))
+                                new_w, new_h = int(w * scale), int(h * scale)
+                            
+                            x_scale = page_w / float(new_w) if new_w > 0 else 1.0
+                            y_scale = page_h / float(new_h) if new_h > 0 else 1.0
+                            
+                            for op in page_paras:
+                                o_bbox = op.get("bbox")
+                                if o_bbox and len(o_bbox) == 4:
+                                    op["bbox"] = [
+                                        o_bbox[0] * x_scale,
+                                        o_bbox[1] * y_scale,
+                                        o_bbox[2] * x_scale,
+                                        o_bbox[3] * y_scale
+                                    ]
+                                paragraphs.append(op)
                     pdf_doc.close()
 
             elif ext in ["png", "jpeg", "jpg", "tiff", "bmp"]:
@@ -153,6 +269,15 @@ class DocumentParserService:
                 "confidence": 0.50
             }]
 
+        # Step 7.5: Post-OCR LLM Contextual Typo & Corruption Correction
+        enable_llm_correction = getattr(settings, "ENABLE_LLM_OCR_CORRECTION", True)
+        if enable_llm_correction and paragraphs and llm_service.is_available():
+            try:
+                logger.info(f"Doc {doc_id}: Running post-OCR LLM text correction on {len(paragraphs)} paragraphs...")
+                paragraphs = llm_service.correct_ocr_paragraphs_with_llm(paragraphs)
+            except Exception as e:
+                logger.warning(f"Doc {doc_id}: Post-OCR LLM text correction skipped: {e}")
+
         # Step 8 & 9: Paragraph-wise Language Detection & Translation (Parallelized)
         from backend.services.translation_service import INDIC_ADMIN_DICTIONARY, normalize_indic_digits
 
@@ -160,34 +285,53 @@ class DocumentParserService:
             is_table_block = (p.get("block_type") == "table") or bool(p.get("table_grid"))
             if is_table_block and p.get("table_grid"):
                 raw_grid = p.get("table_grid", [])
-                trans_grid = []
+                
+                # Pre-detect the language from the first non-empty cell value
                 sample_text = ""
                 for row in raw_grid:
-                    trans_row = []
                     for cell in row:
                         c_str = str(cell or "").strip()
+                        if c_str and not re.match(r'^[0-9\s,\.\-\+\(\)₹%\/०-९]+$', c_str):
+                            sample_text = c_str
+                            break
+                    if sample_text:
+                        break
+                
+                p_lang, lang_conf = LanguageDetectionService.detect_language_with_confidence(sample_text or "Marathi")
+                
+                trans_grid = []
+                for row_idx, row in enumerate(raw_grid):
+                    trans_row = []
+                    for col_idx, cell in enumerate(row):
+                        c_str = str(cell or "").strip()
                         if c_str:
-                            if not sample_text: sample_text = c_str
-                            # 1. Fast optimization: If cell is numeric/currency/date string, normalize digits locally
-                            if re.match(r'^[0-9\s,\.\-\+\(\)₹%\/०-९]+$', c_str):
-                                t_cell = normalize_indic_digits(c_str)
-                            # 2. Already English text
-                            elif re.match(r'^[a-zA-Z0-9\s\.,\-\/\:\;\(\)₹%]+$', c_str):
-                                t_cell = c_str
-                            # 3. Exact administrative dictionary match
+                            # 0. Table Serial Number Normalization:
+                            # If we are in the first column, not the header, and cell is a known corrupted number/character
+                            if col_idx == 0 and row_idx > 0 and (c_str in {"ते", "তে", "ডে", "ডে", "०", "০", "রে", "ре", "রে", ".", "২", "२"} or re.match(r'^[तेतेडेডে০०রে.]+$', c_str)):
+                                t_cell = str(row_idx)
+                            # 1. Exact administrative dictionary match
                             elif c_str in INDIC_ADMIN_DICTIONARY:
                                 t_cell = INDIC_ADMIN_DICTIONARY[c_str]
-                            # 4. Idiom / phrase glossary match
+                            # 2. Idiom / phrase glossary match
                             elif c_str in MARATHI_IDIOM_GLOSSARY:
                                 t_cell = MARATHI_IDIOM_GLOSSARY[c_str]
+                            # 3. Detect if corrupted Romanized Marathi or Hinglish (e.g. (Pine Ke Pani Ki Nai Pipeline))
+                            # prior to checking English regex (Rule 3)
+                            elif is_corrupted_romanized_marathi(c_str, p_lang):
+                                t_cell = translation_engine.translate_paragraph(c_str, p_lang)
+                            # 4. Fast optimization: If cell is numeric/currency/date string, normalize digits locally
+                            elif re.match(r'^[0-9\s,\.\-\+\(\)₹%\/०-९]+$', c_str):
+                                t_cell = normalize_indic_digits(c_str)
+                            # 5. Already English text (which doesn't match romanized marathi/hinglish check above)
+                            elif re.match(r'^[a-zA-Z0-9\s\.,\-\/\:\;\(\)₹%]+$', c_str):
+                                t_cell = c_str
                             else:
-                                t_cell = translation_engine.translate_paragraph(c_str, "Marathi")
+                                t_cell = translation_engine.translate_paragraph(c_str, p_lang)
                             trans_row.append(t_cell)
                         else:
                             trans_row.append("")
                     trans_grid.append(trans_row)
 
-                p_lang, lang_conf = LanguageDetectionService.detect_language_with_confidence(sample_text or "Table")
                 p["language"] = p_lang
                 p["language_confidence"] = lang_conf
                 p["translated_table_grid"] = trans_grid

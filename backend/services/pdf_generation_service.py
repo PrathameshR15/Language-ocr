@@ -1,6 +1,17 @@
 import os
+import re
 from typing import List, Dict, Any, Optional
+from backend.utils.unicode_utils import normalize_indic_digits
 import fitz  # PyMuPDF
+
+def clean_for_pdf(text: str) -> str:
+    if not text:
+        return ""
+    # Strip any characters outside Latin-1 range (Helvetica/Standard PDF fonts only support ord(c) < 256)
+    # This prevents 'need font file or buffer' errors caused by unstripped Indic or zero-width joiners.
+    cleaned = "".join(c for c in text if ord(c) < 256)
+    return cleaned.strip()
+
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
@@ -56,6 +67,7 @@ class PDFGenerationService:
                     # Handle 2D Styled Table Grid rendering
                     if block_type == "table" and (p.get("translated_table_grid") or p.get("table_grid")):
                         grid = p.get("translated_table_grid") or p.get("table_grid")
+                        cell_bboxes = p.get("table_cell_bboxes")
                         if bbox and len(bbox) == 4 and grid:
                             t_x0, t_y0, t_x1, t_y1 = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
                             num_rows = len(grid)
@@ -63,22 +75,49 @@ class PDFGenerationService:
                             col_w = (t_x1 - t_x0) / float(num_cols)
                             row_h = (t_y1 - t_y0) / float(num_rows)
 
-                            import re
                             for r_idx, row in enumerate(grid):
                                 for c_idx, cell_val in enumerate(row):
                                     c_txt = normalize_indic_digits(str(cell_val or ""))
                                     c_txt = re.sub(r'[\u0900-\u0DFF]', '', c_txt).strip()
 
-                                    c_x0 = t_x0 + (c_idx * col_w)
-                                    c_y0 = t_y0 + (r_idx * row_h)
-                                    c_x1 = c_x0 + col_w
-                                    c_y1 = c_y0 + row_h
-                                    cell_rect = fitz.Rect(c_x0, c_y0, c_x1, c_y1)
+                                    # Try to use original cell coordinates if available
+                                    cell_rect = None
+                                    if cell_bboxes and r_idx < len(cell_bboxes) and c_idx < len(cell_bboxes[r_idx]):
+                                        c_bbox = cell_bboxes[r_idx][c_idx]
+                                        if c_bbox and len(c_bbox) == 4:
+                                            orig_table_bbox = p.get("bbox")
+                                            if orig_table_bbox and len(orig_table_bbox) == 4:
+                                                o_x0, o_y0, o_x1, o_y1 = float(orig_table_bbox[0]), float(orig_table_bbox[1]), float(orig_table_bbox[2]), float(orig_table_bbox[3])
+                                                o_w = o_x1 - o_x0
+                                                o_h = o_y1 - o_y0
+                                                if o_w > 0 and o_h > 0:
+                                                    rx0 = (float(c_bbox[0]) - o_x0) / o_w
+                                                    ry0 = (float(c_bbox[1]) - o_y0) / o_h
+                                                    rx1 = (float(c_bbox[2]) - o_x0) / o_w
+                                                    ry1 = (float(c_bbox[3]) - o_y0) / o_h
+                                                    
+                                                    t_w = t_x1 - t_x0
+                                                    t_h = t_y1 - t_y0
+                                                    cell_rect = fitz.Rect(
+                                                        t_x0 + rx0 * t_w,
+                                                        t_y0 + ry0 * t_h,
+                                                        t_x0 + rx1 * t_w,
+                                                        t_y0 + ry1 * t_h
+                                                    )
+                                            if cell_rect is None:
+                                                cell_rect = fitz.Rect(float(c_bbox[0]), float(c_bbox[1]), float(c_bbox[2]), float(c_bbox[3]))
+
+                                    if cell_rect is None:
+                                        c_x0 = t_x0 + (c_idx * col_w)
+                                        c_y0 = t_y0 + (r_idx * row_h)
+                                        c_x1 = c_x0 + col_w
+                                        c_y1 = c_y0 + row_h
+                                        cell_rect = fitz.Rect(c_x0, c_y0, c_x1, c_y1)
 
                                     # Header row formatting (#1e4d35 dark green fill)
                                     if r_idx == 0:
                                         pdf_page.draw_rect(cell_rect, color=(0.12, 0.30, 0.21), fill=(0.12, 0.30, 0.21))
-                                        pdf_page.insert_textbox(cell_rect, c_txt, fontsize=9, fontname="helv-bold", color=(1, 1, 1), align=1)
+                                        pdf_page.insert_textbox(cell_rect, c_txt, fontsize=9, fontname="hebo", color=(1, 1, 1), align=1)
                                     else:
                                         pdf_page.draw_rect(cell_rect, color=(0.75, 0.75, 0.75), fill=(1, 1, 1))
                                         align_c = 1 if (c_idx == 0 or c_idx == num_cols - 1) else 0
@@ -106,7 +145,7 @@ class PDFGenerationService:
                     elif align_name == "right": align_code = 2
                     elif align_name == "justify": align_code = 3
 
-                    font_name = "helv-bold" if is_bold or block_type in ["title", "section_heading", "signature"] else "helv"
+                    font_name = "hebo" if is_bold or block_type in ["title", "section_heading", "signature"] else "helv"
 
                     if bbox and len(bbox) == 4 and (bbox[2] - bbox[0]) > 5 and (bbox[3] - bbox[1]) > 5:
                         rect = fitz.Rect(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
@@ -124,6 +163,8 @@ class PDFGenerationService:
             logger.info(f"[IN-PLACE ENGINE] In-place redacted & replaced PDF generated at {output_path}")
             return True
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             logger.warning(f"In-place PDF redaction failed: {e}")
             return False
 
@@ -162,8 +203,8 @@ class PDFGenerationService:
 
                 # Draw top subtle header bar
                 pdf_page.draw_rect(fitz.Rect(0, 0, page_w, 24), color=(0.17, 0.42, 0.69), fill=(0.17, 0.42, 0.69))
-                header_title = f"{metadata.get('state', 'OFFICIAL').upper()} - ENGLISH TRANSLATION"
-                pdf_page.insert_textbox(fitz.Rect(15, 4, page_w - 15, 20), header_title, fontsize=8, fontname="helv-bold", color=(1, 1, 1), align=0)
+                header_title = clean_for_pdf(f"{metadata.get('state', 'OFFICIAL').upper()} - ENGLISH TRANSLATION")
+                pdf_page.insert_textbox(fitz.Rect(15, 4, page_w - 15, 20), header_title, fontsize=8, fontname="hebo", color=(1, 1, 1), align=0)
 
                 # Collect horizontal line markers and draw divider lines
                 y_positions = [p.get("bbox", [0, 0, 0, 0])[1] for p in page_paras if p.get("bbox")]
@@ -177,6 +218,7 @@ class PDFGenerationService:
 
                     if block_type == "table" and (p.get("translated_table_grid") or p.get("table_grid")):
                         grid = p.get("translated_table_grid") or p.get("table_grid")
+                        cell_bboxes = p.get("table_cell_bboxes")
                         if not bbox or len(bbox) != 4:
                             num_rows = len(grid) if grid else 1
                             t_y0 = max(40.0, float(p.get("paragraph", 1) * 25.0))
@@ -195,15 +237,43 @@ class PDFGenerationService:
                                     c_txt = normalize_indic_digits(str(cell_val or ""))
                                     c_txt = re.sub(r'[\u0900-\u0DFF]', '', c_txt).strip()
 
-                                    c_x0 = t_x0 + (c_idx * col_w)
-                                    c_y0 = t_y0 + (r_idx * row_h)
-                                    c_x1 = c_x0 + col_w
-                                    c_y1 = c_y0 + row_h
-                                    cell_rect = fitz.Rect(c_x0, c_y0, c_x1, c_y1)
+                                    # Try to use original cell coordinates if available
+                                    cell_rect = None
+                                    if cell_bboxes and r_idx < len(cell_bboxes) and c_idx < len(cell_bboxes[r_idx]):
+                                        c_bbox = cell_bboxes[r_idx][c_idx]
+                                        if c_bbox and len(c_bbox) == 4:
+                                            orig_table_bbox = p.get("bbox")
+                                            if orig_table_bbox and len(orig_table_bbox) == 4:
+                                                o_x0, o_y0, o_x1, o_y1 = float(orig_table_bbox[0]), float(orig_table_bbox[1]), float(orig_table_bbox[2]), float(orig_table_bbox[3])
+                                                o_w = o_x1 - o_x0
+                                                o_h = o_y1 - o_y0
+                                                if o_w > 0 and o_h > 0:
+                                                    rx0 = (float(c_bbox[0]) - o_x0) / o_w
+                                                    ry0 = (float(c_bbox[1]) - o_y0) / o_h
+                                                    rx1 = (float(c_bbox[2]) - o_x0) / o_w
+                                                    ry1 = (float(c_bbox[3]) - o_y0) / o_h
+                                                    
+                                                    t_w = t_x1 - t_x0
+                                                    t_h = t_y1 - t_y0
+                                                    cell_rect = fitz.Rect(
+                                                        t_x0 + rx0 * t_w,
+                                                        t_y0 + ry0 * t_h,
+                                                        t_x0 + rx1 * t_w,
+                                                        t_y0 + ry1 * t_h
+                                                    )
+                                            if cell_rect is None:
+                                                cell_rect = fitz.Rect(float(c_bbox[0]), float(c_bbox[1]), float(c_bbox[2]), float(c_bbox[3]))
+
+                                    if cell_rect is None:
+                                        c_x0 = t_x0 + (c_idx * col_w)
+                                        c_y0 = t_y0 + (r_idx * row_h)
+                                        c_x1 = c_x0 + col_w
+                                        c_y1 = c_y0 + row_h
+                                        cell_rect = fitz.Rect(c_x0, c_y0, c_x1, c_y1)
 
                                     if r_idx == 0:
                                         pdf_page.draw_rect(cell_rect, color=(0.12, 0.30, 0.21), fill=(0.12, 0.30, 0.21))
-                                        pdf_page.insert_textbox(cell_rect, c_txt, fontsize=9, fontname="helv-bold", color=(1, 1, 1), align=1)
+                                        pdf_page.insert_textbox(cell_rect, c_txt, fontsize=9, fontname="hebo", color=(1, 1, 1), align=1)
                                     else:
                                         pdf_page.draw_rect(cell_rect, color=(0.75, 0.75, 0.75), fill=(1, 1, 1))
                                         align_c = 1 if (c_idx == 0 or c_idx == num_cols - 1) else 0
@@ -232,7 +302,7 @@ class PDFGenerationService:
                     elif align_name == "right": align_code = 2
                     elif align_name == "justify": align_code = 3
 
-                    font_name = "helv-bold" if is_bold or block_type in ["title", "section_heading", "signature"] else "helv"
+                    font_name = "hebo" if is_bold or block_type in ["title", "section_heading", "signature"] else "helv"
 
                     if bbox and len(bbox) == 4 and (bbox[2] - bbox[0]) > 10 and (bbox[3] - bbox[1]) > 5:
                         x0, y0, x1, y1 = float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
@@ -268,7 +338,7 @@ class PDFGenerationService:
 
                 # Bottom footer line & page number
                 pdf_page.draw_line(fitz.Point(30, page_h - 25), fitz.Point(page_w - 30, page_h - 25), color=(0.7, 0.75, 0.8), width=0.5)
-                footer_str = f"Page {pg_num} of {len(pages_map)} | Ref: {metadata.get('doc_number', 'Govt Award Notice')}"
+                footer_str = clean_for_pdf(f"Page {pg_num} of {len(pages_map)} | Ref: {metadata.get('doc_number', 'Govt Award Notice')}")
                 pdf_page.insert_textbox(fitz.Rect(30, page_h - 22, page_w - 30, page_h - 8), footer_str, fontsize=7, fontname="helv", color=(0.4, 0.45, 0.5), align=1)
 
             doc.save(output_path)
@@ -276,6 +346,8 @@ class PDFGenerationService:
             logger.info(f"PyMuPDF high-fidelity bounding-box layout PDF successfully generated at {output_path}")
             return True
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             logger.warning(f"PyMuPDF bounding-box PDF generation failed: {e}. ReportLab fallback will be used.")
             return False
 
@@ -292,9 +364,10 @@ class PDFGenerationService:
             output_filename = f"translated_{doc_id}_{filename}.pdf"
             output_path = os.path.join(settings.TRANSLATED_DIR, output_filename)
 
-        # 1. Try In-Place PDF Text Redaction & Replacement for Digital PDFs / PDF Files
+        # 1. Try In-Place PDF Text Redaction & Replacement ONLY for Digital PDFs
         orig_path = metadata.get("original_pdf_path") or metadata.get("temp_input_path")
-        if orig_path and os.path.exists(orig_path) and orig_path.lower().endswith(".pdf"):
+        is_digital = metadata.get("document_type") == "Digital PDF"
+        if is_digital and orig_path and os.path.exists(orig_path) and orig_path.lower().endswith(".pdf"):
             success = PDFGenerationService.generate_in_place_redacted_pdf(
                 orig_path, paragraphs, metadata, output_path
             )

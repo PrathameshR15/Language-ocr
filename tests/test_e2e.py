@@ -23,16 +23,16 @@ async def test_e2e_flow():
     print("DOCX Result ID:", res_docx["id"])
     print("DOCX Language Detected:", res_docx["language"])
     print("DOCX Paragraphs extracted:", len(res_docx["paragraphs"]))
-    assert res_docx["original_pdf_path"] == ""
+    assert res_docx["original_pdf_path"] != ""
     assert res_docx["translated_pdf_path"] == ""
     assert len(res_docx["paragraphs"]) > 0
     print("First Para Text length:", len(res_docx["paragraphs"][0]["text"]))
     print("First Para Translation length:", len(res_docx["paragraphs"][0]["translated_text"]))
 
     print("\n--- Testing TXT Upload & Translation ---")
-    txt_filename = "e2e_test_spanish.txt"
+    txt_filename = "e2e_test_bengali.txt"
     with open(txt_filename, "w", encoding="utf-8") as f:
-        f.write("Este es un documento importante del gobierno de España.\nDepartamento de Educación.\nFecha: 29 de Julio de 2026.")
+        f.write("পশ্চিমবঙ্গ সরকার পরিবেশ ও শিক্ষা বিভাগ।\nতারিখ: ২৯ জুলাই ২০২৬।")
 
     with open(txt_filename, "rb") as f:
         txt_bytes = f.read()
@@ -41,7 +41,7 @@ async def test_e2e_flow():
     print("TXT Result ID:", res_txt["id"])
     print("TXT Language Detected:", res_txt["language"])
     print("TXT Paragraphs extracted:", len(res_txt["paragraphs"]))
-    assert res_txt["original_pdf_path"] == ""
+    assert res_txt["original_pdf_path"] != ""
     assert res_txt["translated_pdf_path"] == ""
     assert len(res_txt["paragraphs"]) > 0
 
