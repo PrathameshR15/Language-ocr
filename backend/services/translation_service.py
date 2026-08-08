@@ -15,7 +15,9 @@ from backend.utils.unicode_utils import (
 
 PROPER_NOUN_ENTITY_MAP = {
     "Rekha Vadekar": "Rekha Wadekar",
-    "Pumpery": "Pimpri"
+    "Rekha Wadekar": "Rekha Wadekar",
+    "Pumpery": "Pimpri",
+    "Pumprey": "Pimpri"
 }
 
 def load_custom_dictionary():
@@ -606,6 +608,10 @@ class TranslationService:
         # Step 4: Final cleanup
         final_res = cls.normalize_result(restored_translation)
         final_res = clean_unrestored_placeholders(final_res)
+
+        # Pre-LLM proper noun and place name mappings (Rule 5)
+        for key, val in PROPER_NOUN_ENTITY_MAP.items():
+            final_res = re.sub(r'\b' + re.escape(key) + r'\b', val, final_res, flags=re.IGNORECASE)
 
         # Step 5: English Output Validation & Grammar Correction
         try:
