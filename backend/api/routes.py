@@ -305,7 +305,7 @@ async def get_document_summary(doc_id: str):
         raise HTTPException(status_code=400, detail="No text available to summarize.")
         
     # Combine original and/or translated texts
-    full_text = "\n\n".join([p.get("translated_text", p.get("text", "")) for p in paragraphs if p.get("translated_text") or p.get("text")])
+    full_text = "\n\n".join([p.get("translated_text") if p.get("translated_text") else p.get("text", "") for p in paragraphs])
     if not full_text.strip():
         raise HTTPException(status_code=400, detail="Document content is empty.")
         

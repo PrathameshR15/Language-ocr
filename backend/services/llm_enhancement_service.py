@@ -17,6 +17,16 @@ class LLMEnhancementService:
         self.groq_disabled_until = 0.0
 
     def is_available(self) -> bool:
+        if not self.gemini_key and not self.groq_key:
+            try:
+                from config import load_dotenv
+                load_dotenv()
+                from config import settings
+                self.gemini_key = (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY", "")).strip()
+                self.groq_key = (settings.GROQ_API_KEY or os.environ.get("GROQ_API_KEY", "")).strip()
+            except Exception:
+                pass
+
         now = time.time()
         gemini_ok = bool(self.gemini_key) and now > self.gemini_disabled_until
         groq_ok = bool(self.groq_key) and now > self.groq_disabled_until
