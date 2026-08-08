@@ -308,17 +308,17 @@ INPUT TEXT:
 
     def generate_summary(self, text: str) -> str:
         """
-        Generates a 100% accurate, comprehensive English summary of any document.
+        Generates a 100% accurate, short, and concise English summary of any document.
         """
         if not self.is_available() or not text or not text.strip():
             return "Summarization is unavailable because LLM keys are not configured or the text is empty."
 
         prompt = f"""You are a high-accuracy Document Intelligence AI.
-Provide a clear, 100% accurate, and comprehensive executive summary of the following document in English.
+Provide a clear, 100% accurate, and very brief, concise executive summary (maximum 2-3 sentences) of the following document in English.
 
 Rules:
 1. Ensure the summary is 100% accurate and contains only facts mentioned in the text.
-2. Structure the summary logically (e.g., Key Purpose, Important Details/Actions, Names/Dates/Numbers).
+2. Summarize the key purpose and most critical details in exactly 2 to 3 sentences. Do not use bullet lists.
 3. Do not include external assumptions or introduce facts not in the document.
 4. Keep the output clean, professional, and written in English.
 
