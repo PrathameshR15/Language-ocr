@@ -17,16 +17,6 @@ class LLMEnhancementService:
         self.groq_disabled_until = 0.0
 
     def is_available(self) -> bool:
-        if not self.gemini_key and not self.groq_key:
-            try:
-                from config import load_dotenv
-                load_dotenv()
-                from config import settings
-                self.gemini_key = (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY", "")).strip()
-                self.groq_key = (settings.GROQ_API_KEY or os.environ.get("GROQ_API_KEY", "")).strip()
-            except Exception:
-                pass
-
         now = time.time()
         gemini_ok = bool(self.gemini_key) and now > self.gemini_disabled_until
         groq_ok = bool(self.groq_key) and now > self.groq_disabled_until
@@ -189,7 +179,7 @@ DOCUMENT TEXT:
         # Try Gemini API first
         if self.gemini_key and now > self.gemini_disabled_until:
             try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={self.gemini_key}"
                 headers = {"Content-Type": "application/json"}
                 payload = {"contents": [{"parts": [{"text": prompt}]}]}
                 res = requests.post(url, json=payload, headers=headers, timeout=timeout)
@@ -318,17 +308,17 @@ INPUT TEXT:
 
     def generate_summary(self, text: str) -> str:
         """
-        Generates a 100% accurate, short, and concise English summary of any document.
+        Generates a 100% accurate, comprehensive English summary of any document.
         """
         if not self.is_available() or not text or not text.strip():
             return "Summarization is unavailable because LLM keys are not configured or the text is empty."
 
         prompt = f"""You are a high-accuracy Document Intelligence AI.
-Provide a clear, 100% accurate, and very brief, concise executive summary (maximum 2-3 sentences) of the following document in English.
+Provide a clear, 100% accurate, and comprehensive executive summary of the following document in English.
 
 Rules:
 1. Ensure the summary is 100% accurate and contains only facts mentioned in the text.
-2. Summarize the key purpose and most critical details in exactly 2 to 3 sentences. Do not use bullet lists.
+2. Structure the summary logically (e.g., Key Purpose, Important Details/Actions, Names/Dates/Numbers).
 3. Do not include external assumptions or introduce facts not in the document.
 4. Keep the output clean, professional, and written in English.
 

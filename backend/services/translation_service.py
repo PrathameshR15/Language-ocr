@@ -575,6 +575,13 @@ class TranslationService:
         if cache_key in cls._cache:
             return cls._cache[cache_key]
 
+        # Step 0A_1: Enforce progress vs salary rule directly for exact matches (Rule 1)
+        progress_keywords = ["प्रगति", "प्रगती", "पग्रत", "पग्रती", "पग्रɟत", "পগ্রত", "পগ্রতী", "প্রগতি"]
+        if clean_text.strip() in progress_keywords:
+            res = f"{prefix}Progress" if prefix else "Progress"
+            cls._cache[cache_key] = res
+            return res
+
         # Check exact match in admin dictionary for single-word / short table cells
         if clean_text in INDIC_ADMIN_DICTIONARY:
             admin_res = INDIC_ADMIN_DICTIONARY[clean_text]
