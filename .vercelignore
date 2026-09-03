@@ -1,0 +1,6 @@
+# Files/directories not needed in the Vercel build
+tests/
+*.pdf
+*.ipynb
+tessdata/
+models/indictrans_finetuned/model.safetensors
