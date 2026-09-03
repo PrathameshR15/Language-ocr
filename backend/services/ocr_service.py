@@ -1097,6 +1097,48 @@ class OCRService:
 
         avg_document_confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.92
         merged_paras = self.merge_ocr_line_fragments(paragraphs)
+        
+        # 5. Final Fallback: OpenAI Vision (if all OCR engines returned corrupted/invalid text)
+        if merged_paras:
+            is_valid, _ = self.validate_ocr_quality(merged_paras, avg_document_confidence)
+            if not is_valid:
+                from backend.services.openai_vision_service import openai_vision_service
+                if openai_vision_service.is_available():
+                    logger.warning(f"[OCR FALLBACK TRIGGERED] All OCR engines returned corrupted output for page {page_num}. Using OpenAI Vision...")
+                    import tempfile, os
+                    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+                        pil_image.save(tmp_file.name)
+                        tmp_path = tmp_file.name
+                    try:
+                        ai_text = openai_vision_service.extract_text_from_image(tmp_path, lang_hint="Marathi")
+                        os.unlink(tmp_path)
+                        if ai_text:
+                            ai_paras = []
+                            # Split by double newline to preserve paragraph blocks, or single newline
+                            blocks = re.split(r'\n\s*\n', ai_text) if '\n\n' in ai_text else ai_text.split('\n')
+                            para_idx = 1
+                            for block in blocks:
+                                clean_t = block.strip()
+                                if clean_t:
+                                    ai_paras.append({
+                                        "paragraph": para_idx,
+                                        "page": page_num,
+                                        "text": clean_t,
+                                        "confidence": 0.99,
+                                        "source": "openai_vision",
+                                        "block_type": "paragraph"
+                                    })
+                                    para_idx += 1
+                            if ai_paras:
+                                logger.info(f"[OPENAI VISION] Successfully extracted {len(ai_paras)} paragraphs for page {page_num}.")
+                                return ai_paras, 0.99
+                    except Exception as e:
+                        logger.error(f"OpenAI Vision fallback failed: {e}")
+                        try:
+                            os.unlink(tmp_path)
+                        except:
+                            pass
+
         return merged_paras, avg_document_confidence
 
 

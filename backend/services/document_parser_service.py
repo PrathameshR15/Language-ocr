@@ -125,6 +125,13 @@ class DocumentParserService:
                                 
                                 for r_idx in range(num_rows):
                                     for c_idx in range(len(grid[r_idx])):
+                                        # Keep original digital text if it contains meaningful characters
+                                        orig_text = grid[r_idx][c_idx].strip()
+                                        if orig_text and not re.match(r'^[\s\-\~\=\+]+$', orig_text):
+                                            new_grid[r_idx][c_idx] = orig_text
+                                            continue
+                                            
+                                        # Otherwise, fallback to OCR on the cell
                                         if cell_bboxes and r_idx < len(cell_bboxes) and c_idx < len(cell_bboxes[r_idx]):
                                             c_bbox = cell_bboxes[r_idx][c_idx]
                                             if c_bbox and len(c_bbox) == 4:
@@ -139,15 +146,18 @@ class DocumentParserService:
                                                 cy1 = min(img_h, cy1)
                                                 
                                                 if cx1 > cx0 and cy1 > cy0:
-                                                    cell_img = pil_img.crop((cx0, cy0, cx1, cy1))
-                                                    cell_img = ImageOps.expand(cell_img, border=10, fill="white")
-                                                    
-                                                    cell_text = pytesseract.image_to_string(
-                                                        cell_img,
-                                                        lang=tess_lang,
-                                                        config="--psm 6"
-                                                    ).strip()
-                                                    new_grid[r_idx][c_idx] = sanitize_indic_text(cell_text)
+                                                    try:
+                                                        cell_img = pil_img.crop((cx0, cy0, cx1, cy1))
+                                                        cell_img = ImageOps.expand(cell_img, border=10, fill="white")
+                                                        cell_text = pytesseract.image_to_string(
+                                                            cell_img,
+                                                            lang=tess_lang,
+                                                            config="--psm 6"
+                                                        ).strip()
+                                                        new_grid[r_idx][c_idx] = sanitize_indic_text(cell_text)
+                                                    except Exception as e:
+                                                        logger.warning(f"Cell OCR failed at row {r_idx} col {c_idx}: {e}")
+                                                        new_grid[r_idx][c_idx] = orig_text
                                 
                                 tbl["table_grid"] = new_grid
                                 paragraphs.append(tbl)
@@ -305,10 +315,9 @@ class DocumentParserService:
                     for col_idx, cell in enumerate(row):
                         c_str = str(cell or "").strip()
                         if c_str:
-                            # 0. Table Serial Number Normalization:
                             # If we are in the first column, not the header, and cell is a known corrupted number/character
-                            if col_idx == 0 and row_idx > 0 and (c_str in {"ते", "তে", "ডে", "ডে", "०", "০", "রে", "ре", "রে", ".", "২", "२"} or re.match(r'^[तेतेडेডে০०রে.]+$', c_str)):
-                                t_cell = str(row_idx)
+                            if col_idx == 0 and row_idx > 0 and (c_str in {"ते", "তে", "ডে", "ডে", "রে", "ре", "রে", "."} or re.match(r'^[तेतेडेডেরে.]+$', c_str)):
+                                t_cell = str(row_idx if row_idx == 1 else row_idx - 1)
                             # 1. Exact administrative dictionary match
                             elif c_str in INDIC_ADMIN_DICTIONARY:
                                 t_cell = INDIC_ADMIN_DICTIONARY[c_str]
@@ -320,7 +329,7 @@ class DocumentParserService:
                             elif is_corrupted_romanized_marathi(c_str, p_lang):
                                 t_cell = translation_engine.translate_paragraph(c_str, p_lang)
                             # 4. Fast optimization: If cell is numeric/currency/date string, normalize digits locally
-                            elif re.match(r'^[0-9\s,\.\-\+\(\)₹%\/०-९]+$', c_str):
+                            elif re.match(r'^[0-9\s,\.\-\+\(\)₹%\/०-९০-৯]+$', c_str):
                                 t_cell = normalize_indic_digits(c_str)
                             # 5. Already English text (which doesn't match romanized marathi/hinglish check above)
                             elif re.match(r'^[a-zA-Z0-9\s\.,\-\/\:\;\(\)₹%]+$', c_str):

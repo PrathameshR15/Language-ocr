@@ -179,7 +179,7 @@ DOCUMENT TEXT:
         # Try Gemini API first
         if self.gemini_key and now > self.gemini_disabled_until:
             try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={self.gemini_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_key}"
                 headers = {"Content-Type": "application/json"}
                 payload = {"contents": [{"parts": [{"text": prompt}]}]}
                 res = requests.post(url, json=payload, headers=headers, timeout=timeout)
@@ -305,28 +305,6 @@ INPUT TEXT:
 
         corrected = self._call_llm_raw(prompt, timeout=3.0)
         return corrected.strip() if corrected else text
-
-    def generate_summary(self, text: str) -> str:
-        """
-        Generates a 100% accurate, comprehensive English summary of any document.
-        """
-        if not self.is_available() or not text or not text.strip():
-            return "Summarization is unavailable because LLM keys are not configured or the text is empty."
-
-        prompt = f"""You are a high-accuracy Document Intelligence AI.
-Provide a clear, 100% accurate, and comprehensive executive summary of the following document in English.
-
-Rules:
-1. Ensure the summary is 100% accurate and contains only facts mentioned in the text.
-2. Structure the summary logically (e.g., Key Purpose, Important Details/Actions, Names/Dates/Numbers).
-3. Do not include external assumptions or introduce facts not in the document.
-4. Keep the output clean, professional, and written in English.
-
-DOCUMENT CONTENT:
-{text[:8000]}
-"""
-        res = self._call_llm_raw(prompt, timeout=10.0)
-        return res.strip() if res else "Failed to generate summary using LLM."
 
 llm_service = LLMEnhancementService()
 

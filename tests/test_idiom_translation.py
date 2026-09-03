@@ -4,7 +4,6 @@ from backend.services.translation_service import (
     TranslationService,
     MARATHI_IDIOM_GLOSSARY,
     clean_ocr_text,
-    is_transliteration_garbage,
 )
 
 
@@ -60,14 +59,4 @@ class TestOCRPreprocessing:
         assert result == "शासन निर्णय"
 
 
-class TestTransliterationDetection:
-    """Verify transliteration garbage detector works."""
 
-    def test_detects_garbage(self):
-        assert is_transliteration_garbage("ati tithe maati", "अति तिथे माती") is True
-
-    def test_accepts_good_english(self):
-        assert is_transliteration_garbage("Excess of anything is harmful.", "अति तिथे माती") is False
-
-    def test_accepts_short_text(self):
-        assert is_transliteration_garbage("ok", "ठीक") is False

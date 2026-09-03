@@ -32,19 +32,6 @@ test_*.docx
 sample_*.docx
 trace_output_test.pdf
 
-# Large ML model weights — use Git LFS or host externally (e.g. HuggingFace Hub)
-models/
-*.safetensors
-*.bin
-*.pt
-*.onnx
-*.ckpt
-*.pth
-*.h5
-
-# Tesseract trained language data files (download separately via apt/brew or tessdata repo)
-tessdata/
-
 # OS / IDE
 .DS_Store
 Thumbs.db

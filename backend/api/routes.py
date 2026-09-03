@@ -293,26 +293,6 @@ async def preview_translated_pdf(doc_id: str, background_tasks: BackgroundTasks)
             raise e
         raise HTTPException(status_code=500, detail=f"Preview error: {str(e)}")
 
-@router.get("/document/{doc_id}/summary")
-async def get_document_summary(doc_id: str):
-    """Generate and return a 100% accurate English summary of the document using LLM."""
-    doc = await db_client.get_document_by_id(doc_id)
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    
-    paragraphs = await db_client.get_extracted_texts_by_doc_id(doc_id)
-    if not paragraphs:
-        raise HTTPException(status_code=400, detail="No text available to summarize.")
-        
-    # Combine original and/or translated texts
-    full_text = "\n\n".join([p.get("translated_text") if p.get("translated_text") else p.get("text", "") for p in paragraphs])
-    if not full_text.strip():
-        raise HTTPException(status_code=400, detail="Document content is empty.")
-        
-    from backend.services.llm_enhancement_service import llm_service
-    summary = llm_service.generate_summary(full_text)
-    return {"doc_id": doc_id, "summary": summary}
-
 @router.get("/metadata/{doc_id}")
 
 async def get_metadata(doc_id: str):

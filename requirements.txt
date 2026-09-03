@@ -33,7 +33,4 @@ sentencepiece
 sacremoses
 indic-nlp-library
 ultralytics
-
-
-
-
+pytesseract>=0.3.10

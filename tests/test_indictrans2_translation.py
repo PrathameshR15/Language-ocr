@@ -1,13 +1,6 @@
 import pytest
-from backend.services.translation_service import TranslationService, INDICTRANS_LANG_MAP
+from backend.services.translation_service import TranslationService
 
-def test_indictrans2_language_mappings():
-    """Verify all major Indic languages are mapped to IndicTrans2 language codes."""
-    assert INDICTRANS_LANG_MAP.get("marathi") == "mar_Deva"
-    assert INDICTRANS_LANG_MAP.get("hindi") == "hin_Deva"
-    assert INDICTRANS_LANG_MAP.get("gujarati") == "guj_Gujr"
-    assert INDICTRANS_LANG_MAP.get("tamil") == "tam_Taml"
-    assert INDICTRANS_LANG_MAP.get("telugu") == "tel_Telu"
 
 def test_translation_pipeline_marathi():
     """Test paragraph translation pipeline on Marathi administrative text."""

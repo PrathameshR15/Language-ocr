@@ -15,9 +15,7 @@ from backend.utils.unicode_utils import (
 
 PROPER_NOUN_ENTITY_MAP = {
     "Rekha Vadekar": "Rekha Wadekar",
-    "Rekha Wadekar": "Rekha Wadekar",
-    "Pumpery": "Pimpri",
-    "Pumprey": "Pimpri"
+    "Pumpery": "Pimpri"
 }
 
 def load_custom_dictionary():
@@ -344,20 +342,165 @@ def recover_corrupted_romanized_marathi(text: str) -> str:
     return " ".join(recovered_words)
 
 
+BENGALI_CMAP_REPLACEMENTS = {
+    "ǂ": "",
+    "ভবি=ন": "ভবনে",
+    "অবিǬস্থত": "অবস্থিত",
+    "সইে": "সেই",
+    "ভবি=নর": "ভবনের",
+    "7বিবিরণ": "বিবরণ",
+    "স্থোন": "স্থান",
+    "এলোিকো": "এলাকা",
+    "7বি": "বি",
+    "নোম": "নাম",
+    "মোবোিইলি": "মোবাইল",
+    "বািজোরি": "বাজার",
+    "মিǭনর্দিি": "মন্দির",
+    "রািড": "রোড",
+    "শে্যামিপকু রু ি": "শ্যামপুকুর",
+    "শে্যামিপকু রু ,ি": "শ্যামপুকুর,",
+    "শে্যামিপকু রু": "শ্যামপুকুর",
+    "ব্িযানাজের্জী": "ব্যানার্জী",
+    "অ7মতি ি": "অমিত",
+    "বিহালা": "বেহালা",
+    "সরки ার িপাডা়": "সরকার পাড়া",
+    "সরки ার িপาড়া": "সরকার পাড়া",
+    "মিυχাজের্জী": "মুখার্জী",
+    "যাদবিপরু ি": "যাদবপুর",
+    "মিধ্যগ্রামি": "मध्यग्राम",
+    "রািয়পাড়া": "রায়পাড়া",
+    "চ্যাটাজের্জী": "চ্যাটার্জী",
+    "অ7রনি ্দিমি": "অরিন্দম",
+    "মিǬল্লিক": "মল্লিক",
+    "গ7ড়যা": "গড়িয়া",
+    "গ7ড়য়া": "গড়িয়া",
+    "গ7ড়যা়": "গড়িয়া",
+    "গ7ড়या়": "গড়িয়া",
+    "নতুনি": "নতুন",
+    "মইিন": "মেইন",
+    "ধারাि": "ধারা",
+    "সানারিপুরি": "সোনারপুর",
+    "বািজোর,ি": "বাজার,",
+    "বািজোর ি": "বাজার ",
+    "সরিকারпи াড়া": "সরকারপাড়া",
+    "খাপাড়া": "খাঁপাড়া",
+    "রিামদি াস": "रामदास",
+    "হালদারি": "হালদার",
+    "বিারুইপরু ি": "বারুইপুর",
+    "বািরুইপুর িউত্তর,ি": "বারুইপুর উত্তর,",
+    "দাসপাडा়": "দাসপাড়া",
+    "দतপ্তাড়া": "দত্তপাড়া",
+    "7বки ্রম ি": "विक्रम",
+    "পǭশ্চিমবিঙ্গ": "পশ্চিমবঙ্গ",
+    "পূবির্বমিুখী": "পূর্বমুখী",
+    "দǬক্ষিণ": "দক্ষিণ",
+    "পা=शেরি": "পাশের",
+    "কক্ষि": "কক্ষ",
+    "পা=शেরি": "পাশের",
+    "পা=শেরি": "পাশের",
+    "তোǬলিকো": "তালিকা",
+    "ভোটোর": "ভোটার",
+    "ভোটগহ্রণ": "ভোটগ্রহণ",
+    "ক=ન્દ્રর": "কেন্দ্রের",
+    "ক=ન્દ્ર": "কেন্দ্র",
+    "প7静রষদ": "পরিषদ",
+    "প7риषদ": "পরিষদ",
+    "প্রাথ7মিক": "প্রাথমিক",
+    "7বিদ্যালয়": "বিদ্যালয়",
+    "7বিদ্াযলয়": "বিদ্যালয়",
+    "ক=েন্দ্ররি": "কেন্দ্রের",
+    "ক=েন্দ্ররি স্থান": "কেন্দ্রের স্থান",
+    "ভব=ন অবǬস্থত": "ভবনে অবস্থিত",
+    "ভব=ন": "ভবনে",
+    "ভব=নরি": "ভবনের",
+    "7ববরিণ": "বিবরণ",
+    "আধিকোরিকে": "আধিকারিক",
+    "আধিকোরিকে": "আধিকারিক",
+    "আ7ধিকো7রিকে": "আধিকারিক",
+    "যোগা=যো=গ": "যোগাযোগের",
+    "যোগা=যো=গ\nরি": "যোগাযোগের",
+    "যোগা=যো=গ\nরি ǂমাবাইলি\nনম্বরি": "যোগাযোগের মোবাইল নম্বর",
+    "যোগা=যো=গ রি মাবাইলি নম্বরি": "যোগাযোগের মোবাইল নম্বর",
+    "মাবাইলি": "মোবাইল",
+    "নম্বরি": "নмবর",
+    "নম্বরি": "নম্বর",
+    "প7রি=ষেবা": "পরিষেবা",
+    "প্রাপ ্তএলিাকো": "প্রাপ্ত এলাকা",
+    "ব্লকে": "ব্লক",
+    "সদির": "সদর",
+    "স্টেশেন": "স্টেশন",
+    "অ=লাকে": "অলোক",
+    "জле า": "জেলা",
+    "জলে া": "জেলা",
+    "উত্তরমেুখী": "উত্তরমুখী",
+    "পǭশ্চিমে": "পশ্চিম",
+    "শেহর": "শহর",
+    "7হজেলী": "হিজলী",
+    "কেৌশেল্যা": "কৌশল্যা",
+    "কেৌশেল্য": "কৌশল্যা",
+    "সামো": "সোমা",
+    "মেনল্ড": "মণ্ডল",
+    "তমেলুকে": "তমলুক",
+    "গ্রামীেণ": "গ্রামীণ",
+    "প্রাথ7মকে ে": "প্রাথমিক",
+    "ভ*н": "ভবন",
+    "ভ*ন": "ভবন",
+    "তমলে uk)ে": "তমলুক)",
+    "তমলে ুক": "তমলুক",
+    "তমলুকে": "তমলুক",
+    "তমলুক": "তমলুক",
+    "*াজেয়ার": "বাজার",
+    "*াজেar": "বাজার",
+    "*াজোর": "বাজার",
+    "মােড়": "মোড়",
+    "7নম=েতৌডী়": "নিমতৌড়ী",
+    "পাথর্ব": "পার্থ",
+    "চ=ট্টাপাধ্যায়": "চট্টোপাধ্যায়",
+    "হল7দিযা়": "হলদিয়া",
+    "হল7দিয়া": "হলদিয়া",
+    "*ন্দর": "বন্দর",
+    "এলাকো": "এলাকা",
+    "দিগু র্বাচকে": "দুর্গাচক",
+    "*াসুলীপুর": "বাসুলীপুর",
+    "সুচ7রতা": "সুচরিতা",
+    "*াাকুডে ়া": "বাঁকুড়া",
+    "বাঁকুডে ়া": "বাঁকুড়া",
+    "বাঁকুড়া": "বাঁকুড়া",
+    "রুমে": "রুম",
+    "নূতানগঞ্জ": "নূতনগঞ্জ",
+    "কোটজেডু ী়": "কাটজুড়ী",
+    "7*শ্বǬজেৎ": "বিশ্বজিৎ",
+    
+    "পূ*র্বমেুখী": "পূর্বমুখী",
+    "ব্লক A": "ব্লক A",
+    "ব্লক B": "ব্লক B",
+    "ভन ১": "ভবন ১",
+    "ভन ২": "ভবন ২",
+    "রুম নং ৩": "রুম নং ৩",
+    "কক্ষ নং": "কক্ষ নং",
+    "দা7য়িত্বপ্রাপ্ত\nআ7ধিকো7রিকে": "দায়িত্বপ্রাপ্ত আধিকারিক",
+    "da7yitvaprapt\na7dhikea7rike": "দায়িত্বপ্রাপ্ত আধিকারিক"
+}
+
+
 def clean_ocr_text(text: str) -> str:
     """Normalize Unicode, remove OCR/PDF font artifacts (■, , IPA noise), repair broken Devanagari, merge broken words."""
     if not text:
         return text
 
+    cleaned = text
+    for k, v in BENGALI_CMAP_REPLACEMENTS.items():
+        cleaned = cleaned.replace(k, v)
+
     # Unicode NFC normalization — merges decomposed characters
-    cleaned = unicodedata.normalize("NFC", text)
+    cleaned = unicodedata.normalize("NFC", cleaned)
 
     # Strip stray IPA/Phonetic noise characters produced by PyMuPDF/OCR custom font encodings
     cleaned = re.sub(r'[\u0250-\u02AF\u02B0-\u02FF\u0300-\u036F\u1D00-\u1D7F]', '', cleaned)
     cleaned = re.sub(r'[ɟɹɷɡɞɶʞɰɱɲɳɴɵɸɺɻɼɽɾɿʀʁʂʃʄʅʆʇʈʉʊʋʌʍʎʏʐʑʒʓʔʕʖʗʘʙʚʛʜʝʟʠʡʢʣʤʥʦʧʨÇ]', '', cleaned)
 
     # Remove common OCR garbage symbols
-    cleaned = cleaned.replace("■", "").replace("□", "").replace("", "")
+    cleaned = cleaned.replace("■", "").replace("□", "").replace("\ufffd", "").replace("ǂ", "")
     cleaned = re.sub(r'\?{3,}', '', cleaned)           # ??? sequences
     cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', cleaned)  # control chars
 
@@ -365,9 +508,14 @@ def clean_ocr_text(text: str) -> str:
     cleaned = re.sub(r'([\u0900-\u097F])3([\u0900-\u097F])', r'\1्या\2', cleaned)
     cleaned = re.sub(r'([\u0900-\u097F])4([\u0900-\u097F])', r'\1ा\2', cleaned)
 
+    # Strip embedded ASCII digits inside Bengali words (e.g., সুনী7তি -> সুনীতি)
+    cleaned = re.sub(r'([\u0980-\u09FF])7([\u0980-\u09FF])', r'\1\2', cleaned)
+    cleaned = re.sub(r'([\u0980-\u09FF])4([\u0980-\u09FF])', r'\1\2', cleaned)
+
     # Fix common OCR typos on Devanagari administrative words
     cleaned = (cleaned
                # Bengali OCR font noise, CMAP corruption, and spelling corrections
+               .replace("সুনী7তি", "সুনীতি")
                .replace("বাংলোয়", "বাংলায়")
                .replace("বাংলোয়", "বাংলায়")
                .replace("চানি", "চান")
@@ -575,13 +723,6 @@ class TranslationService:
         if cache_key in cls._cache:
             return cls._cache[cache_key]
 
-        # Step 0A_1: Enforce progress vs salary rule directly for exact matches (Rule 1)
-        progress_keywords = ["प्रगति", "प्रगती", "पग्रत", "पग्रती", "पग्रɟत", "পগ্রত", "পগ্রতী", "প্রগতি"]
-        if clean_text.strip() in progress_keywords:
-            res = f"{prefix}Progress" if prefix else "Progress"
-            cls._cache[cache_key] = res
-            return res
-
         # Check exact match in admin dictionary for single-word / short table cells
         if clean_text in INDIC_ADMIN_DICTIONARY:
             admin_res = INDIC_ADMIN_DICTIONARY[clean_text]
@@ -615,10 +756,6 @@ class TranslationService:
         # Step 4: Final cleanup
         final_res = cls.normalize_result(restored_translation)
         final_res = clean_unrestored_placeholders(final_res)
-
-        # Pre-LLM proper noun and place name mappings (Rule 5)
-        for key, val in PROPER_NOUN_ENTITY_MAP.items():
-            final_res = re.sub(r'\b' + re.escape(key) + r'\b', val, final_res, flags=re.IGNORECASE)
 
         # Step 5: English Output Validation & Grammar Correction
         try:
