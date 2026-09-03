@@ -56,10 +56,21 @@ def _ensure_tesseract():
             # pyrefly: ignore [missing-import]
             import pytesseract as _pytesseract
             from config import settings
-            _pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_PATH
-            pytesseract = _pytesseract
-            logger.info("pytesseract engine initialized successfully.")
+            
+            if settings.TESSERACT_PATH:
+                _pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_PATH
+                
+            # Verify if tesseract is actually accessible
+            try:
+                _pytesseract.get_tesseract_version()
+                pytesseract = _pytesseract
+                logger.info(f"pytesseract engine initialized successfully using path: {settings.TESSERACT_PATH or 'system default'}")
+            except Exception as e:
+                logger.warning(f"Tesseract OCR is unavailable at '{settings.TESSERACT_PATH}'. OCR fallback cascade will be used. Error: {e}")
+                pytesseract = None
+                
         except ImportError:
+            logger.warning("pytesseract package not installed. OCR fallback cascade will be used.")
             pass
     return pytesseract
 

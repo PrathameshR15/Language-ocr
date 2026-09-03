@@ -1,4 +1,5 @@
 import os
+import shutil
 from pydantic import BaseModel
 from typing import List
 
@@ -35,7 +36,13 @@ class Settings(BaseModel):
     ENABLE_GLINER: bool = os.getenv("ENABLE_GLINER", "True").lower() in ("true", "1", "yes")
     OCR_ENGINE: str = os.getenv("OCR_ENGINE", "auto").lower()  # Options: 'auto', 'surya', 'easyocr', 'rapidocr', 'paddleocr'
     ENABLE_LLM_OCR_CORRECTION: bool = os.getenv("ENABLE_LLM_OCR_CORRECTION", "True").lower() in ("true", "1", "yes")
-    TESSERACT_PATH: str = os.getenv("TESSERACT_PATH", r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+    
+    # Dynamic Tesseract path resolution (cross-platform)
+    TESSERACT_PATH: str = os.getenv(
+        "TESSERACT_PATH", 
+        shutil.which("tesseract") or (r"C:\Program Files\Tesseract-OCR\tesseract.exe" if os.name == 'nt' else "tesseract")
+    )
+    
     TESSERACT_DATA_DIR: str = os.getenv("TESSERACT_DATA_DIR", r"./tessdata")
     
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
