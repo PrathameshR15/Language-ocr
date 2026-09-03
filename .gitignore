@@ -37,3 +37,4 @@ trace_output_test.pdf
 Thumbs.db
 .vscode/
 .idea/
+models/indictrans_finetuned/model.safetensors
