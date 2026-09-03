@@ -31,7 +31,7 @@ class Settings(BaseModel):
     RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
     
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "***REMOVED***")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     ENABLE_GLINER: bool = os.getenv("ENABLE_GLINER", "True").lower() in ("true", "1", "yes")
     OCR_ENGINE: str = os.getenv("OCR_ENGINE", "auto").lower()  # Options: 'auto', 'surya', 'easyocr', 'rapidocr', 'paddleocr'
     ENABLE_LLM_OCR_CORRECTION: bool = os.getenv("ENABLE_LLM_OCR_CORRECTION", "True").lower() in ("true", "1", "yes")
