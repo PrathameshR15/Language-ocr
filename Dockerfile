@@ -9,15 +9,13 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     poppler-utils \
     tesseract-ocr \
-    tesseract-ocr-hin \
-    tesseract-ocr-mar \
-    tesseract-ocr-guj \
-    tesseract-ocr-ben \
-    tesseract-ocr-tam \
-    tesseract-ocr-tel \
-    tesseract-ocr-kan \
-    tesseract-ocr-mal \
-    tesseract-ocr-urd \
+    tesseract-ocr-bn \
+    tesseract-ocr-hi \
+    tesseract-ocr-mr \
+    tesseract-ocr-ta \
+    tesseract-ocr-te \
+    tesseract-ocr-ml \
+    tesseract-ocr-ur \
     curl \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -36,4 +34,4 @@ RUN mkdir -p uploads translated logs data
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
