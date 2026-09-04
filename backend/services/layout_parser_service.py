@@ -18,6 +18,8 @@ class LayoutParserService:
     @classmethod
     def get_doclayout_yolo_model(cls):
         """Lazy-loads DocLayout-YOLO pretrained visual layout detection model."""
+        if os.getenv("RENDER", "0") == "1":
+            return None
         if cls._yolo_model is None and YOLO is not None:
             model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "doclayout_yolo.pt")
             if not os.path.exists(model_path):
@@ -77,6 +79,8 @@ class LayoutParserService:
     @classmethod
     def detect_table_transformer_layout(cls, pil_img) -> List[Dict[str, Any]]:
         """Performs visual table layout detection using Microsoft's Table Transformer (TATR) model."""
+        if os.getenv("RENDER", "0") == "1":
+            return []
         try:
             from backend.services.table_transformer_service import table_transformer_service
             tables = table_transformer_service.detect_tables(pil_img)

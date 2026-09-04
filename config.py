@@ -21,9 +21,16 @@ class Settings(BaseModel):
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
     
-    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
-    TRANSLATED_DIR: str = os.getenv("TRANSLATED_DIR", "./translated")
-    LOG_DIR: str = os.getenv("LOG_DIR", "./logs")
+    if os.getenv("RENDER", "0") == "1":
+        UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "/data/uploads")
+        TRANSLATED_DIR: str = os.getenv("TRANSLATED_DIR", "/data/translated")
+        LOG_DIR: str = os.getenv("LOG_DIR", "/data/logs")
+        ENABLE_GLINER: bool = False
+    else:
+        UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
+        TRANSLATED_DIR: str = os.getenv("TRANSLATED_DIR", "./translated")
+        LOG_DIR: str = os.getenv("LOG_DIR", "./logs")
+        ENABLE_GLINER: bool = os.getenv("ENABLE_GLINER", "True").lower() in ("true", "1", "yes")
     
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./gov_doc_translation.db")
     
@@ -33,7 +40,6 @@ class Settings(BaseModel):
     
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    ENABLE_GLINER: bool = os.getenv("ENABLE_GLINER", "True").lower() in ("true", "1", "yes")
     OCR_ENGINE: str = os.getenv("OCR_ENGINE", "auto").lower()  # Options: 'auto', 'surya', 'easyocr', 'rapidocr', 'paddleocr'
     ENABLE_LLM_OCR_CORRECTION: bool = os.getenv("ENABLE_LLM_OCR_CORRECTION", "True").lower() in ("true", "1", "yes")
     
