@@ -1,9 +1,6 @@
 import unittest
-import os
-import json
 import re
-from backend.services.translation_service import translation_engine, clean_ocr_text, PROPER_NOUN_ENTITY_MAP
-from backend.services.document_parser_service import DocumentParserService
+from backend.services.translation_service import translation_engine
 
 class TestCustomTranslationFixes(unittest.TestCase):
 

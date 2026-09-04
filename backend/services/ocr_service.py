@@ -72,37 +72,20 @@ def _ensure_tesseract():
         except ImportError:
             logger.warning("pytesseract package not installed. OCR fallback cascade will be used.")
             pass
-    return pytesseract
+    """Tesseract OCR disabled – returns None."""
+    return None
 
 # Surya OCR lazy loading handles
 surya_rec_predictor = None
 surya_initialized = None
 
 def _ensure_surya():
-    global surya_rec_predictor, surya_initialized
-    if surya_initialized is None:
-        try:
-            # pyrefly: ignore [missing-import]
-            from surya.recognition import RecognitionPredictor
-            logger.info("Initializing Surya OCR RecognitionPredictor...")
-            surya_rec_predictor = RecognitionPredictor()
-            surya_initialized = True
-            logger.info("Surya OCR RecognitionPredictor loaded successfully.")
-        except Exception as e:
-            logger.warning(f"Could not load Surya OCR engine/models: {e}")
-            surya_initialized = False
-    return surya_initialized
+    """Surya OCR disabled – always returns False to avoid heavy model load."""
+    return False
 
 def _ensure_rapidocr():
-    global RapidOCR
-    if RapidOCR is None:
-        try:
-            # pyrefly: ignore [missing-import]
-            from rapidocr_onnxruntime import RapidOCR as _RapidOCR
-            RapidOCR = _RapidOCR
-        except ImportError:
-            pass
-    return RapidOCR
+    """RapidOCR disabled – returns None."""
+    return None
 
 
 def sanitize_indic_text(text: str) -> str:
@@ -116,6 +99,20 @@ def sanitize_indic_text(text: str) -> str:
 
 class OCRService:
     """Multilingual OCR Engine utilizing EasyOCR, PaddleOCR, & RapidOCR with OpenCV preprocessing."""
+
+    _indictrans_model = None
+    _indictrans_tokenizer = None
+
+    @classmethod
+    def _load_indictrans(cls):
+        """IndicTrans disabled – does not load any model."""
+        logger.info("IndicTrans local model loading is disabled; using input text unchanged.")
+        # No model is loaded; keep attributes as None
+
+    @classmethod
+    def translate_via_indictrans(cls, text: str, source_lang: str = "Marathi") -> str:
+        """IndicTrans disabled – returns the original text unchanged."""
+        return text
 
     def __init__(self):
         # Engines are lazy-loaded on first use to keep server startup fast

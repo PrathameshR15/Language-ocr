@@ -47,6 +47,12 @@ async def root():
         return FileResponse(index_path)
     return {"message": f"Welcome to {settings.APP_NAME}", "docs": "/docs"}
 
+# Simple health check endpoint
+@app.get("/health")
+async def health():
+    """Return a basic health status for monitoring purposes."""
+    return {"status": "ok"}
+
 if __name__ == "__main__":
     import uvicorn
     host_display = "localhost" if settings.HOST in ("0.0.0.0", "127.0.0.1") else settings.HOST

@@ -1,8 +1,7 @@
-import os
 import torch
-import numpy as np
+# pyrefly: ignore [missing-import]
 from PIL import Image
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any
 from backend.utils.logger import logger
 
 try:
