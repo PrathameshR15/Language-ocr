@@ -847,7 +847,8 @@ class OCRService:
             import os
             # Set TESSDATA_PREFIX environment variable so Tesseract can resolve paths containing spaces on Windows
             abs_tessdata_dir = os.path.abspath(tessdata_dir)
-            os.environ["TESSDATA_PREFIX"] = abs_tessdata_dir
+            if os.name == 'nt':
+                os.environ["TESSDATA_PREFIX"] = abs_tessdata_dir
             w, h = pil_image.size
             small_img = pil_image.resize((w // 2, h // 2))
             custom_config = '--psm 3'
@@ -879,7 +880,8 @@ class OCRService:
 
             # Set TESSDATA_PREFIX environment variable so Tesseract can resolve paths containing spaces on Windows
             abs_tessdata_dir = os.path.abspath(settings.TESSERACT_DATA_DIR)
-            os.environ["TESSDATA_PREFIX"] = abs_tessdata_dir
+            if os.name == 'nt':
+                os.environ["TESSDATA_PREFIX"] = abs_tessdata_dir
             
             # Detect primary language script to improve accuracy
             target_langs = self.detect_languages_for_tesseract(pil_image, abs_tessdata_dir)
