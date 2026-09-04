@@ -9,13 +9,13 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     poppler-utils \
     tesseract-ocr \
-    tesseract-ocr-bn \
-    tesseract-ocr-hi \
-    tesseract-ocr-mr \
-    tesseract-ocr-ta \
-    tesseract-ocr-te \
-    tesseract-ocr-ml \
-    tesseract-ocr-ur \
+    tesseract-ocr-ben \
+    tesseract-ocr-hin \
+    tesseract-ocr-mar \
+    tesseract-ocr-tam \
+    tesseract-ocr-tel \
+    tesseract-ocr-mal \
+    tesseract-ocr-urd \
     curl \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
