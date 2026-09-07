@@ -788,10 +788,18 @@ class TranslationService:
         # Step 1: Protect non-translatable symbols & numbers
         protected_text, symbol_map = protect_symbols_for_translation(clean_text)
 
-        # Step 2: Perform translation via GoogleTranslator (ultra-fast <1s), fallback to IndicTrans / M2M100
+        # Step 2: Perform translation via GoogleTranslator (ultra-fast <1s), fallback to IndicTrans / M2M100, final fallback to OpenAI LLM
         raw_translation = cls.translate_via_google(protected_text, source_lang)
         if not raw_translation:
             raw_translation = cls.translate_via_indictrans(protected_text, source_lang)
+        if not raw_translation:
+            try:
+                from backend.services.llm_enhancement_service import llm_service
+                if llm_service.is_available():
+                    logger.info(f"Google+IndicTrans both failed for '{protected_text[:40]}...'. Using OpenAI LLM fallback.")
+                    raw_translation = llm_service.translate_paragraph_llm(protected_text, source_lang)
+            except Exception as _llm_ex:
+                logger.warning(f"OpenAI LLM translation fallback failed: {_llm_ex}")
 
         # Step 3: Restore protected symbols
         restored_translation = restore_symbols_after_translation(raw_translation if raw_translation else protected_text, symbol_map)
